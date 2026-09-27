@@ -55,16 +55,16 @@ export const release = {
       "platform": "Windows",
       "format": "setup.exe",
       "name": "KinForge Genealogy Studio-1.3.8-x64-setup.exe",
-      "size": 92376577,
-      "sha256": "015b2c1609257cec1aab2dc448cd2d04f251f98ae65447ae17368de8038c519f"
+      "size": 92386303,
+      "sha256": "70daa96f434ddbb2e87203b1d0dfb39961f813ae774c1de9033879500526915d"
     },
     {
       "id": "x64-portable-exe",
       "platform": "Windows",
       "format": "portable.exe",
       "name": "KinForge Genealogy Studio-1.3.8-x64-portable.exe",
-      "size": 92113698,
-      "sha256": "c03df6090017a44278fa6c86cd11ca063c176cf8e12e38597aeac9c22fe5714d"
+      "size": 92123526,
+      "sha256": "356f4559850757fb128a7a832f91fbf8c53a339a99200ab744ff38ee20ae48d8"
     }
   ]
 } as const;
