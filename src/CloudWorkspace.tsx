@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText } from "lucide-react";
+import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText, ClipboardList } from "lucide-react";
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
@@ -31,6 +31,7 @@ export default function CloudWorkspace() {
   const [revenueOpen, setRevenueOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
   const [newsletterOpen, setNewsletterOpen] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [choices, setChoices] = useState<ConflictChoices>({});
   const sync = useRef<CloudSync | null>(null);
@@ -97,14 +98,14 @@ export default function CloudWorkspace() {
   async function signOut() {
     try {
       await cloudRequest("/api/auth/logout", "POST", {});
-      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setError("");
+      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setSupportOpen(false); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Reconnect before signing out."); }
   }
   if (demo) return <App cloud={{ state: demo, account: { id: "demo", name: "Guest demo", email: "" }, onChange: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, onSave: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, toolbar: <span className="cloud-status">Demo - saved on this device</span>, onSignOut: () => { setDemo(null); sessionStorage.removeItem("kinforge-demo-session"); }, readOnly: false, saved: true, demo: true, canManagePrivacy: true }} />;
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
   const toolbar = <div className="cloud-toolbar"><button className={`cloud-status ${view?.error ? "cloud-warning" : ""}`} onClick={() => void sync.current?.sync()} title={view?.lastSaved ? `Last saved ${new Date(view.lastSaved).toLocaleString()}` : "Sync now"} aria-label={`Cloud sync: ${view?.status || "Connecting"}`}>
-    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Owner revenue</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Owner access</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
+    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Payments</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Accounts & access</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setSupportOpen(true)}><ClipboardList size={16} />Support tickets</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
   return <>
     {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
     {view?.preview && <div className="cloud-notice" role="status">Opening the full saved library. Editing and downloads will be available when it is ready.</div>}
@@ -115,6 +116,7 @@ export default function CloudWorkspace() {
     {revenueOpen && user.ownerDashboard && <OwnerRevenueDialog onClose={() => setRevenueOpen(false)} />}
     {accessOpen && user.ownerDashboard && <OwnerAccessDialog onClose={() => setAccessOpen(false)} />}
     {newsletterOpen && user.ownerDashboard && <OwnerNewsletterDialog onClose={() => setNewsletterOpen(false)} />}
+    {supportOpen && user.ownerDashboard && <OwnerSupportDialog onClose={() => setSupportOpen(false)} />}
     {updatesOpen && <UpdateCenter currentState={view?.state ?? null} onClose={() => setUpdatesOpen(false)} />}
     {exportMessage && !recovery && <div className="cloud-export-notice" role="status"><span>{exportMessage}</span><button aria-label="Dismiss export message" onClick={() => setExportMessage("")}><X size={16} /></button></div>}
     {!!view?.conflicts.length && !recovery && <div className="cloud-scrim"><section className="cloud-dialog wide" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><h2 id="conflict-title">Changes need your choice</h2><p>Two devices changed the same information. Choose which version to keep for each item.</p>{view.conflicts.map(conflict => <fieldset className="sync-conflict" key={conflict.path}><legend>{conflict.path}</legend>{(["local", "remote"] as const).map(side => <label key={side}><input type="radio" name={conflict.path} checked={choices[conflict.path] === side} onChange={() => setChoices(previous => ({ ...previous, [conflict.path]: side }))} /><strong>{side === "local" ? "This device" : "Cloud version"}</strong><pre>{formatValue(conflict[side])}</pre></label>)}</fieldset>)}<button className="button" disabled={view.conflicts.some(c => !choices[c.path])} onClick={() => void sync.current?.resolve(choices).catch(e => setError(e.message))}>Save my choices</button></section></div>}
@@ -179,7 +181,12 @@ type NewsletterRelease = { id: string; title: string; subject: string; summary?:
 type SpecialAccessCode = { hash: string; label: string; recipientEmail?: string; note?: string; createdAt: number; expiresAt?: number; maxUses: number; useCount: number; revokedAt?: number; lastRedeemedAt?: number; lastRedeemedByEmail?: string };
 type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[] };
 type OwnerNewsletterSummary = { setupRequired: boolean; subscribers: NewsletterSubscriber[]; releases: NewsletterRelease[] };
+type SupportTicket = { id: string; type: string; subject: string; name?: string; email?: string; message: string; device?: string; treeTitle?: string; proof?: string; permissionToReply: number | boolean; diagnostics?: string; status: string; priority: string; deliveryStatus: string; createdAt: number; updatedAt: number; lastReplyAt?: number };
+type SupportReply = { id: string; ticketId: string; authorEmail: string; message: string; deliveryStatus: string; createdAt: number };
+type OwnerSupportSummary = { setupRequired: boolean; tickets: SupportTicket[]; replies: SupportReply[]; counts: { status: string; count: number }[] };
 const currencies = ["SGD", "USD", "EUR", "GBP", "AUD", "CAD", "MYR", "IDR", "JPY", "KRW", "CNY", "INR"];
+const ticketStatuses = ["open", "in-progress", "waiting-customer", "resolved", "closed"];
+const ticketPriorities = ["low", "normal", "high", "urgent"];
 function formatMoney(currencyCode: string, cents: number) {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode, maximumFractionDigits: 2 }).format((cents || 0) / 100);
 }
@@ -419,6 +426,105 @@ function OwnerNewsletterDialog({ onClose }: { onClose: () => void }) {
       <div>
         <h3><FileText size={17} />Released archive</h3>
         <div className="revenue-list owner-access-list">{summary?.releases.length ? summary.releases.map(release => <div className="cloud-member" key={release.id}><span><strong>{release.title}</strong><small>{release.recipientCount} recipients · {release.attachmentCount} attachments · {formatBytes(release.size)} · {release.deliveryStatus}</small></span></div>) : <p className="quiet">No newsletters have been released yet.</p>}</div>
+      </div>
+    </section>
+    {message && <p role="status">{message}</p>}
+  </section></div>;
+}
+
+function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
+  const [summary, setSummary] = useState<OwnerSupportSummary | null>(null);
+  const [selectedId, setSelectedId] = useState("");
+  const [reply, setReply] = useState("");
+  const [filter, setFilter] = useState("active");
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  async function refresh(keepSelected = true) {
+    setMessage("");
+    const data = await cloudRequest<OwnerSupportSummary>("/api/owner/support");
+    setSummary(data);
+    if (!keepSelected || !data.tickets.some(ticket => ticket.id === selectedId)) setSelectedId(data.tickets[0]?.id || "");
+  }
+  useEffect(() => { void refresh(false).catch(error => setMessage(error instanceof Error ? error.message : "Could not load support tickets.")); }, []);
+  const filtered = (summary?.tickets || []).filter(ticket => filter === "all" ? true : filter === "active" ? !["resolved", "closed"].includes(ticket.status) : ticket.status === filter);
+  const selected = (summary?.tickets || []).find(ticket => ticket.id === selectedId) || filtered[0] || null;
+  const replies = (summary?.replies || []).filter(item => item.ticketId === selected?.id).sort((a, b) => a.createdAt - b.createdAt);
+  const counts = Object.fromEntries((summary?.counts || []).map(row => [row.status, row.count]));
+  async function updateTicket(ticketId: string, updates: { status?: string; priority?: string }) {
+    setBusy(true); setMessage("");
+    try {
+      await cloudRequest(`/api/owner/support/${ticketId}`, "POST", updates);
+      await refresh();
+      setMessage(updates.status ? `Ticket marked ${updates.status}.` : "Ticket priority updated.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update this ticket.");
+    } finally { setBusy(false); }
+  }
+  async function sendReply() {
+    if (!selected) return;
+    setBusy(true); setMessage("");
+    try {
+      const result = await cloudRequest<{ deliveryStatus: string }>(`/api/owner/support/${selected.id}/replies`, "POST", { message: reply });
+      setReply("");
+      await refresh();
+      setMessage(result.deliveryStatus === "sent-to-serene-relay"
+        ? "Reply saved and sent through Serene Relay."
+        : result.deliveryStatus === "stored-only"
+          ? "Reply saved. Email delivery is unavailable or the customer did not allow replies."
+          : "Reply saved, but email delivery reported a problem.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not send this reply.");
+    } finally { setBusy(false); }
+  }
+  return <div className="cloud-scrim"><section className="cloud-dialog wide owner-support" role="dialog" aria-modal="true" aria-labelledby="owner-support-title">
+    <button className="cloud-close" aria-label="Close support tickets" onClick={onClose}><X size={20} /></button>
+    <h2 id="owner-support-title">Owner support tickets</h2>
+    <p className="quiet">Private owner helpdesk. Public support-form enquiries are saved here, can be answered from KinForge, and can be opened, prioritised, resolved or closed.</p>
+    {summary?.setupRequired && <p className="auth-message bad" role="alert">The support ticket tables are not active on this deployment yet. Publish the latest cloud build or run the new database migration.</p>}
+    <div className="revenue-metrics">
+      <article><span>Open</span><strong>{counts.open || 0}</strong><small>New tickets needing action</small></article>
+      <article><span>In progress</span><strong>{counts["in-progress"] || 0}</strong><small>Owner is working on these</small></article>
+      <article><span>Waiting customer</span><strong>{counts["waiting-customer"] || 0}</strong><small>Replies have been sent</small></article>
+      <article><span>Closed</span><strong>{(counts.resolved || 0) + (counts.closed || 0)}</strong><small>Resolved or closed tickets</small></article>
+    </div>
+    <div className="button-row owner-support-filters">
+      <label className="field inline"><span>Show</span><select className="control" value={filter} onChange={event => setFilter(event.target.value)}><option value="active">Active tickets</option><option value="all">All tickets</option>{ticketStatuses.map(status => <option value={status} key={status}>{status}</option>)}</select></label>
+      <button className="button secondary" disabled={busy} onClick={() => void refresh()}><RefreshCw size={16} />Refresh tickets</button>
+    </div>
+    <section className="owner-support-layout">
+      <div className="owner-ticket-list" aria-label="Support tickets">
+        {filtered.length ? filtered.map(ticket => <button key={ticket.id} className={`owner-ticket-row ${selected?.id === ticket.id ? "selected" : ""}`} onClick={() => setSelectedId(ticket.id)}>
+          <strong>{ticket.subject}</strong>
+          <span>{ticket.email || "No email"} · {ticket.status} · {ticket.priority}</span>
+          <small>{new Date(ticket.updatedAt).toLocaleString()}</small>
+        </button>) : <p className="quiet">No tickets match this filter.</p>}
+      </div>
+      <div className="owner-ticket-detail">
+        {selected ? <>
+          <div className="owner-ticket-heading">
+            <div><h3>{selected.subject}</h3><p className="quiet">{selected.type} · from {selected.name || "Unknown"} {selected.email ? `<${selected.email}>` : ""}</p></div>
+            <span className={`ticket-status ${selected.status}`}>{selected.status}</span>
+          </div>
+          <div className="button-row">
+            <label className="field inline"><span>Status</span><select className="control" value={selected.status} disabled={busy} onChange={event => void updateTicket(selected.id, { status: event.target.value })}>{ticketStatuses.map(status => <option key={status}>{status}</option>)}</select></label>
+            <label className="field inline"><span>Priority</span><select className="control" value={selected.priority} disabled={busy} onChange={event => void updateTicket(selected.id, { priority: event.target.value })}>{ticketPriorities.map(priority => <option key={priority}>{priority}</option>)}</select></label>
+            <button className="button secondary" disabled={busy} onClick={() => void updateTicket(selected.id, { status: "open" })}>Reopen</button>
+            <button className="button secondary" disabled={busy} onClick={() => void updateTicket(selected.id, { status: "resolved" })}>Resolve</button>
+            <button className="button secondary" disabled={busy} onClick={() => void updateTicket(selected.id, { status: "closed" })}>Close</button>
+          </div>
+          <article className="support-message">
+            <strong>Customer message</strong>
+            <p>{selected.message}</p>
+            <small>Permission to reply: {selected.permissionToReply ? "yes" : "no"} · delivery: {selected.deliveryStatus} · created {new Date(selected.createdAt).toLocaleString()}</small>
+            {(selected.device || selected.treeTitle || selected.proof || selected.diagnostics) && <details><summary>Details and diagnostics</summary><dl><dt>Device/app</dt><dd>{selected.device || "Not provided"}</dd><dt>Tree</dt><dd>{selected.treeTitle || "Not provided"}</dd><dt>Proof</dt><dd>{selected.proof || "Not provided"}</dd><dt>Diagnostics</dt><dd><pre>{selected.diagnostics || "Not included"}</pre></dd></dl></details>}
+          </article>
+          <div className="support-thread">
+            <h3>Replies</h3>
+            {replies.length ? replies.map(item => <article className="support-reply" key={item.id}><strong>{item.authorEmail}</strong><p>{item.message}</p><small>{new Date(item.createdAt).toLocaleString()} · {item.deliveryStatus}</small></article>) : <p className="quiet">No replies yet.</p>}
+          </div>
+          <label className="field"><span>Reply to customer</span><textarea className="control" rows={7} value={reply} onChange={event => setReply(event.target.value)} placeholder={selected.permissionToReply ? "Write a reply that will be stored and sent through the configured email route." : "This customer did not allow replies; your note will be stored only."} /></label>
+          <div className="button-row"><button className="button" disabled={busy || !reply.trim()} onClick={() => void sendReply()}><Send size={16} />{busy ? "Sending..." : "Save and send reply"}</button></div>
+        </> : <p className="quiet">Choose a ticket to review.</p>}
       </div>
     </section>
     {message && <p role="status">{message}</p>}

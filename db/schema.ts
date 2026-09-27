@@ -131,3 +131,39 @@ export const newsletterReleases = sqliteTable("newsletter_releases", {
   index("newsletter_releases_created").on(t.createdAt),
   index("newsletter_releases_status").on(t.status, t.createdAt)
 ]);
+
+export const supportTickets = sqliteTable("support_tickets", {
+  id: text("id").primaryKey(),
+  type: text("type").notNull(),
+  subject: text("subject").notNull(),
+  name: text("name"),
+  email: text("email"),
+  message: text("message").notNull(),
+  device: text("device"),
+  treeTitle: text("tree_title"),
+  proof: text("proof"),
+  permissionToReply: integer("permission_to_reply").notNull().default(1),
+  diagnostics: text("diagnostics"),
+  status: text("status").notNull().default("open"),
+  priority: text("priority").notNull().default("normal"),
+  deliveryStatus: text("delivery_status").notNull().default("serene-relay-not-configured"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+  lastReplyAt: integer("last_reply_at")
+}, t => [
+  index("support_tickets_status").on(t.status, t.updatedAt),
+  index("support_tickets_email").on(t.email),
+  index("support_tickets_created").on(t.createdAt)
+]);
+
+export const supportReplies = sqliteTable("support_replies", {
+  id: text("id").primaryKey(),
+  ticketId: text("ticket_id").notNull().references(() => supportTickets.id, { onDelete: "cascade" }),
+  authorId: text("author_id").notNull().references(() => accounts.id),
+  authorEmail: text("author_email").notNull(),
+  message: text("message").notNull(),
+  deliveryStatus: text("delivery_status").notNull().default("stored-only"),
+  createdAt: integer("created_at").notNull()
+}, t => [
+  index("support_replies_ticket").on(t.ticketId, t.createdAt)
+]);

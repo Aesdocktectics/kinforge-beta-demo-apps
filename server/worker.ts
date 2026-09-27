@@ -157,7 +157,7 @@ function ownerOnly(env: Env, user: Account) {
   if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
 }
 function tableMissing(error: unknown) {
-  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases/i.test(error.message);
+  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies/i.test(error.message);
 }
 async function ownerRevenue(env: Env) {
   try {
@@ -317,6 +317,72 @@ async function stripeWebhook(request: Request, env: Env) {
   }
   return json({ received: true });
 }
+async function storeSupportTicket(env: Env, ticket: Record<string, any>, deliveryStatus: string) {
+  try {
+    const createdAt = Number.isFinite(Date.parse(ticket.createdAt)) ? Date.parse(ticket.createdAt) : Date.now();
+    await env.DB.prepare("INSERT INTO support_tickets (id,type,subject,name,email,message,device,tree_title,proof,permission_to_reply,diagnostics,status,priority,delivery_status,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .bind(ticket.id, ticket.type, ticket.subject, ticket.name || null, ticket.email || null, ticket.message, ticket.device || null, ticket.treeTitle || null, ticket.proof || null, ticket.permissionToReply ? 1 : 0, ticket.diagnostics || null, "open", "normal", deliveryStatus, createdAt, createdAt).run();
+  } catch (error) {
+    if (!tableMissing(error)) throw error;
+  }
+}
+async function ownerSupportSummary(env: Env) {
+  try {
+    const [tickets, replies, counts] = await Promise.all([
+      env.DB.prepare("SELECT id,type,subject,name,email,message,device,tree_title AS treeTitle,proof,permission_to_reply AS permissionToReply,diagnostics,status,priority,delivery_status AS deliveryStatus,created_at AS createdAt,updated_at AS updatedAt,last_reply_at AS lastReplyAt FROM support_tickets ORDER BY updated_at DESC LIMIT 250").all(),
+      env.DB.prepare("SELECT r.id,r.ticket_id AS ticketId,r.author_email AS authorEmail,r.message,r.delivery_status AS deliveryStatus,r.created_at AS createdAt FROM support_replies r JOIN support_tickets t ON t.id=r.ticket_id ORDER BY r.created_at DESC LIMIT 500").all(),
+      env.DB.prepare("SELECT status,COUNT(*) AS count FROM support_tickets GROUP BY status").all()
+    ]);
+    return json({ setupRequired: false, tickets: tickets.results, replies: replies.results, counts: counts.results });
+  } catch (error) {
+    if (tableMissing(error)) return json({ setupRequired: true, tickets: [], replies: [], counts: [] });
+    throw error;
+  }
+}
+async function deliverSupportReply(env: Env, ticket: Record<string, any>, reply: Record<string, any>) {
+  if (!env.SERENE_RELAY_SUPPORT_ENDPOINT || !env.SERENE_RELAY_SUPPORT_TOKEN || !ticket.email || !ticket.permission_to_reply) return "stored-only";
+  try {
+    const response = await fetch(env.SERENE_RELAY_SUPPORT_ENDPOINT, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${env.SERENE_RELAY_SUPPORT_TOKEN}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        to: ticket.email,
+        from: env.SERENE_RELAY_SUPPORT_FROM || "KinForge Support <support@kinforge.local>",
+        replyTo: env.SERENE_RELAY_SUPPORT_FROM || "",
+        subject: `Re: ${ticket.subject || "KinForge support request"}`.slice(0, 180),
+        text: String(reply.message || ""),
+        source: "kinforge-owner-support-reply",
+        ticketId: ticket.id
+      })
+    });
+    return response.ok ? "sent-to-serene-relay" : "stored-delivery-failed";
+  } catch {
+    return "stored-delivery-failed";
+  }
+}
+async function createSupportReply(env: Env, request: Request, user: Account, ticketId: string) {
+  const data = await body(request, 32768);
+  const message = String(data.message || "").trim().slice(0, 12000);
+  if (!message) throw new Problem(400, "Write a reply before sending.");
+  const ticket = await env.DB.prepare("SELECT * FROM support_tickets WHERE id=?").bind(ticketId).first<Record<string, any>>();
+  if (!ticket) throw new Problem(404, "This support ticket was not found.");
+  const id = crypto.randomUUID();
+  const createdAt = Date.now();
+  const deliveryStatus = await deliverSupportReply(env, ticket, { id, message });
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO support_replies (id,ticket_id,author_id,author_email,message,delivery_status,created_at) VALUES (?,?,?,?,?,?,?)").bind(id, ticketId, user.id, user.email, message, deliveryStatus, createdAt),
+    env.DB.prepare("UPDATE support_tickets SET status='waiting-customer',updated_at=?,last_reply_at=? WHERE id=?").bind(createdAt, createdAt, ticketId)
+  ]);
+  return json({ ok: true, id, deliveryStatus }, 201);
+}
+async function updateSupportTicket(env: Env, request: Request, ticketId: string) {
+  const data = await body(request, 8192);
+  const status = ["open", "in-progress", "waiting-customer", "resolved", "closed"].includes(data.status) ? data.status : null;
+  const priority = ["low", "normal", "high", "urgent"].includes(data.priority) ? data.priority : null;
+  if (!status && !priority) throw new Problem(400, "Choose a ticket status or priority.");
+  await env.DB.prepare(`UPDATE support_tickets SET status=COALESCE(?,status),priority=COALESCE(?,priority),updated_at=? WHERE id=?`).bind(status, priority, Date.now(), ticketId).run();
+  return json({ ok: true });
+}
 async function issueAuthCode(env: Env, request: Request, email: string, purpose: AuthCodePurpose, delivery: "code" | "link" = "code") {
   await rateLimit(env, request, `auth-code-${purpose}`, 5, 60 * 60000, email);
   const user = await env.DB.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first<Account>();
@@ -377,7 +443,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
   if (method !== "GET" && method !== "HEAD") {
     if (request.headers.get("X-KinForge-Client") !== "1" || (request.headers.get("origin") && request.headers.get("origin") !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Problem(403, "This request must come from KinForge.");
   }
-  if (path === "/api/health") return json({ ok: true, version: "1.3.8" });
+  if (path === "/api/health") return json({ ok: true, version: "1.3.9" });
   if (path === "/api/support" && method === "POST") {
     const data = await body(request, 32768);
     await rateLimit(env, request, "support", 8, 60 * 60000, String(data.email || ""));
@@ -398,6 +464,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     };
     if (!ticket.message) throw new Problem(400, "Write the support message before sending.");
     const delivered = await deliverSupportRequest(env, ticket);
+    await storeSupportTicket(env, ticket, delivered ? "sent-to-serene-relay" : "serene-relay-not-configured");
     return json({
       ok: true,
       id: ticket.id,
@@ -491,6 +558,22 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     ownerOnly(env, user);
     await rateLimit(env, request, "owner-newsletters", 20, 60 * 60000, user.id);
     return createNewsletterRelease(env, request, user);
+  }
+  if (path === "/api/owner/support" && method === "GET") {
+    ownerOnly(env, user);
+    return ownerSupportSummary(env);
+  }
+  const supportReply = /^\/api\/owner\/support\/([a-f0-9-]+)\/replies$/.exec(path);
+  if (supportReply && method === "POST") {
+    ownerOnly(env, user);
+    await rateLimit(env, request, "owner-support-replies", 80, 60 * 60000, user.id);
+    return createSupportReply(env, request, user, supportReply[1]);
+  }
+  const supportStatus = /^\/api\/owner\/support\/([a-f0-9-]+)$/.exec(path);
+  if (supportStatus && method === "POST") {
+    ownerOnly(env, user);
+    await rateLimit(env, request, "owner-support-status", 160, 60 * 60000, user.id);
+    return updateSupportTicket(env, request, supportStatus[1]);
   }
   if (path === "/api/owner/special-access-codes" && method === "POST") {
     ownerOnly(env, user);
