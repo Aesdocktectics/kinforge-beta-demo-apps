@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn } from "lucide-react";
+import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle } from "lucide-react";
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
@@ -28,6 +28,7 @@ export default function CloudWorkspace() {
   const [sharing, setSharing] = useState(false);
   const [drivesOpen, setDrivesOpen] = useState(false);
   const [updatesOpen, setUpdatesOpen] = useState(false);
+  const [revenueOpen, setRevenueOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [choices, setChoices] = useState<ConflictChoices>({});
   const sync = useRef<CloudSync | null>(null);
@@ -94,14 +95,14 @@ export default function CloudWorkspace() {
   async function signOut() {
     try {
       await cloudRequest("/api/auth/logout", "POST", {});
-      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setError("");
+      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Reconnect before signing out."); }
   }
   if (demo) return <App cloud={{ state: demo, account: { id: "demo", name: "Guest demo", email: "" }, onChange: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, onSave: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, toolbar: <span className="cloud-status">Demo - saved on this device</span>, onSignOut: () => { setDemo(null); sessionStorage.removeItem("kinforge-demo-session"); }, readOnly: false, saved: true, demo: true, canManagePrivacy: true }} />;
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
   const toolbar = <div className="cloud-toolbar"><button className={`cloud-status ${view?.error ? "cloud-warning" : ""}`} onClick={() => void sync.current?.sync()} title={view?.lastSaved ? `Last saved ${new Date(view.lastSaved).toLocaleString()}` : "Sync now"} aria-label={`Cloud sync: ${view?.status || "Connecting"}`}>
-    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
+    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Owner revenue</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
   return <>
     {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
     {view?.preview && <div className="cloud-notice" role="status">Opening the full saved library. Editing and downloads will be available when it is ready.</div>}
@@ -109,6 +110,7 @@ export default function CloudWorkspace() {
     {recovery && <RecoveryDialog email={user.email} code={recovery} onSaved={() => setRecovery("")} />}
     {sharing && library && <SharingDialog user={user} libraries={libraries} selected={library} onClose={() => setSharing(false)} onSelect={id => { setLibraryId(id); setSharing(false); }} onJoined={async id => { await refreshLibraries(id); setSharing(false); }} />}
     {drivesOpen && library?.role === "owner" && <CloudDrives library={library} onClose={() => setDrivesOpen(false)} />}
+    {revenueOpen && user.ownerDashboard && <OwnerRevenueDialog onClose={() => setRevenueOpen(false)} />}
     {updatesOpen && <UpdateCenter currentState={view?.state ?? null} onClose={() => setUpdatesOpen(false)} />}
     {exportMessage && !recovery && <div className="cloud-export-notice" role="status"><span>{exportMessage}</span><button aria-label="Dismiss export message" onClick={() => setExportMessage("")}><X size={16} /></button></div>}
     {!!view?.conflicts.length && !recovery && <div className="cloud-scrim"><section className="cloud-dialog wide" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><h2 id="conflict-title">Changes need your choice</h2><p>Two devices changed the same information. Choose which version to keep for each item.</p>{view.conflicts.map(conflict => <fieldset className="sync-conflict" key={conflict.path}><legend>{conflict.path}</legend>{(["local", "remote"] as const).map(side => <label key={side}><input type="radio" name={conflict.path} checked={choices[conflict.path] === side} onChange={() => setChoices(previous => ({ ...previous, [conflict.path]: side }))} /><strong>{side === "local" ? "This device" : "Cloud version"}</strong><pre>{formatValue(conflict[side])}</pre></label>)}</fieldset>)}<button className="button" disabled={view.conflicts.some(c => !choices[c.path])} onClick={() => void sync.current?.resolve(choices).catch(e => setError(e.message))}>Save my choices</button></section></div>}
@@ -163,6 +165,69 @@ function RecoveryDialog({ email, code, onSaved }: { email: string; code: string;
 }
 function demoState() { try { const value = localStorage.getItem("kinforge-demo-v1"); if (value) return hydrateLibrary(JSON.parse(value) as AppState); } catch { /* A demo can always start fresh. */ } return createSeedState(); }
 function formatValue(value: unknown) { if (value === undefined) return "Deleted"; if (typeof value === "string") return value.startsWith("data:") ? "Attached file" : value; return JSON.stringify(value, (_key, v) => typeof v === "string" && v.startsWith("data:") ? "Attached file" : v, 2); }
+type RevenueTotal = { currency: string; gross: number; fees: number; net: number; payments: number };
+type RevenueEvent = { id: string; provider: string; source: string; status: string; product: string; tier?: string; customerEmail?: string; customerName?: string; currency: string; amount: number; fee: number; net: number; paidAt: number; createdAt: number };
+type RevenueSummary = { setupRequired: boolean; totals: RevenueTotal[]; recent: RevenueEvent[]; betaInterestCount: number; accountCount: number };
+const currencies = ["SGD", "USD", "EUR", "GBP", "AUD", "CAD", "MYR", "IDR", "JPY", "KRW", "CNY", "INR"];
+function formatMoney(currencyCode: string, cents: number) {
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode, maximumFractionDigits: 2 }).format((cents || 0) / 100);
+}
+function OwnerRevenueDialog({ onClose }: { onClose: () => void }) {
+  const [summary, setSummary] = useState<RevenueSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [form, setForm] = useState({ customerEmail: "", customerName: "", product: "KinForge subscription", tier: "Beta program", currency: "SGD", amount: "", fee: "", status: "paid", paidAt: new Date().toISOString().slice(0, 10) });
+  async function refresh() {
+    setMessage("");
+    const data = await cloudRequest<RevenueSummary>("/api/owner/revenue");
+    setSummary(data);
+  }
+  useEffect(() => { void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not load revenue.")); }, []);
+  async function addEvent() {
+    setBusy(true); setMessage("");
+    try {
+      await cloudRequest("/api/owner/revenue/events", "POST", form);
+      setForm(previous => ({ ...previous, amount: "", fee: "", customerEmail: "", customerName: "" }));
+      await refresh();
+      setMessage("Payment recorded in the owner ledger.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not save the payment.");
+    } finally { setBusy(false); }
+  }
+  return <div className="cloud-scrim"><section className="cloud-dialog wide owner-revenue" role="dialog" aria-modal="true" aria-labelledby="owner-revenue-title">
+    <button className="cloud-close" aria-label="Close owner revenue" onClick={onClose}><X size={20} /></button>
+    <h2 id="owner-revenue-title">Owner revenue</h2>
+    <p className="quiet">Private owner view for payments, subscription income and beta-program revenue. Guests and ordinary customer accounts cannot open this area.</p>
+    {summary?.setupRequired && <p className="auth-message bad" role="alert">The payment ledger table is not active on this deployment yet. Publish the latest cloud build or run the new database migration before live Stripe events can appear.</p>}
+    <div className="revenue-metrics">
+      {summary?.totals.length ? summary.totals.map(total => <article key={total.currency}>
+        <span>{total.currency}</span><strong>{formatMoney(total.currency, total.net)}</strong><small>{total.payments} payments · gross {formatMoney(total.currency, total.gross)} · fees {formatMoney(total.currency, total.fees)}</small>
+      </article>) : <article><span>Total earnings</span><strong>{summary ? "No payments yet" : "Loading..."}</strong><small>Stripe payments and owner entries will appear here.</small></article>}
+      <article><span>Accounts</span><strong>{summary?.accountCount ?? "..."}</strong><small>Signed-in KinForge accounts</small></article>
+      <article><span>Beta interest</span><strong>{summary?.betaInterestCount ?? "..."}</strong><small>People who joined the beta list</small></article>
+    </div>
+    <section className="owner-revenue-entry" aria-labelledby="owner-revenue-entry-title">
+      <h3 id="owner-revenue-entry-title">Record a payment</h3>
+      <div className="revenue-form-grid">
+        <label className="field"><span>Customer email</span><input className="control" type="email" value={form.customerEmail} onChange={event => setForm({ ...form, customerEmail: event.target.value })} /></label>
+        <label className="field"><span>Customer name</span><input className="control" value={form.customerName} onChange={event => setForm({ ...form, customerName: event.target.value })} /></label>
+        <label className="field"><span>Product</span><input className="control" value={form.product} onChange={event => setForm({ ...form, product: event.target.value })} /></label>
+        <label className="field"><span>Tier</span><input className="control" value={form.tier} onChange={event => setForm({ ...form, tier: event.target.value })} /></label>
+        <label className="field"><span>Currency</span><select className="control" value={form.currency} onChange={event => setForm({ ...form, currency: event.target.value })}>{currencies.map(code => <option key={code}>{code}</option>)}</select></label>
+        <label className="field"><span>Amount</span><input className="control" inputMode="decimal" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} placeholder="20.00" /></label>
+        <label className="field"><span>Fees</span><input className="control" inputMode="decimal" value={form.fee} onChange={event => setForm({ ...form, fee: event.target.value })} placeholder="0.00" /></label>
+        <label className="field"><span>Status</span><select className="control" value={form.status} onChange={event => setForm({ ...form, status: event.target.value })}><option value="paid">Paid</option><option value="pending">Pending</option><option value="refunded">Refunded</option><option value="failed">Failed</option></select></label>
+        <label className="field"><span>Paid date</span><input className="control" type="date" value={form.paidAt} onChange={event => setForm({ ...form, paidAt: event.target.value })} /></label>
+      </div>
+      <div className="button-row"><button className="button" disabled={busy || !form.amount.trim()} onClick={() => void addEvent()}><PlusCircle size={16} />{busy ? "Saving..." : "Save payment"}</button><button className="button secondary" disabled={busy} onClick={() => void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not refresh."))}><RefreshCw size={16} />Refresh revenue</button></div>
+    </section>
+    <h3>Recent payments</h3>
+    <div className="revenue-list">
+      {summary?.recent.length ? summary.recent.map(event => <div className="cloud-member" key={event.id}><span><strong>{formatMoney(event.currency, event.net)} · {event.product}</strong><small>{event.customerEmail || event.customerName || "No customer"} · {event.provider} · {event.status} · {new Date(event.paidAt).toLocaleDateString()}</small></span></div>) : <p className="quiet">No payment events have been recorded yet.</p>}
+    </div>
+    {message && <p role="status">{message}</p>}
+  </section></div>;
+}
 
 function LegalAgreementBox({ privacyAccepted, termsAccepted, onPrivacyAccepted, onTermsAccepted }: { privacyAccepted: boolean; termsAccepted: boolean; onPrivacyAccepted: (accepted: boolean) => void; onTermsAccepted: (accepted: boolean) => void }) {
   return <section className="legal-agreement" aria-labelledby="cloud-legal-agreement-title">

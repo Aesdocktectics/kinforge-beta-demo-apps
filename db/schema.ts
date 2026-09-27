@@ -59,3 +59,25 @@ export const libraryExports = sqliteTable("library_exports", {
   objectKey: text("object_key").notNull(), hash: text("hash").notNull(), size: integer("size").notNull(),
   createdAt: integer("created_at").notNull()
 }, t => [index("library_exports_library").on(t.libraryId, t.createdAt)]);
+
+export const paymentEvents = sqliteTable("payment_events", {
+  id: text("id").primaryKey(),
+  provider: text("provider").notNull(),
+  providerEventId: text("provider_event_id"),
+  source: text("source").notNull().default("manual"),
+  status: text("status").notNull(),
+  product: text("product").notNull(),
+  tier: text("tier"),
+  customerEmail: text("customer_email"),
+  customerName: text("customer_name"),
+  currency: text("currency").notNull(),
+  amount: integer("amount").notNull(),
+  fee: integer("fee").notNull().default(0),
+  net: integer("net").notNull(),
+  paidAt: integer("paid_at").notNull(),
+  createdAt: integer("created_at").notNull()
+}, t => [
+  index("payment_events_paid").on(t.paidAt),
+  index("payment_events_currency").on(t.currency, t.paidAt),
+  uniqueIndex("payment_events_provider_event").on(t.provider, t.providerEventId)
+]);

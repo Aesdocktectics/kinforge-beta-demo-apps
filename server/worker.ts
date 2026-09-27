@@ -10,6 +10,7 @@ type Env = DriveEnv & ReleaseEnv & {
   ASSETS: Fetcher;
   EMAIL_CODE_ENDPOINT?: string; EMAIL_CODE_TOKEN?: string; EMAIL_CODE_FROM?: string;
   SERENE_RELAY_SUPPORT_ENDPOINT?: string; SERENE_RELAY_SUPPORT_TOKEN?: string; SERENE_RELAY_SUPPORT_TO?: string; SERENE_RELAY_SUPPORT_FROM?: string;
+  KINFORGE_OWNER_EMAILS?: string; OWNER_EMAILS?: string; STRIPE_WEBHOOK_SECRET?: string;
 };
 type Account = { id: string; email: string; name: string; password: string; recovery_hash: string };
 type Library = { id: string; owner_id: string; name: string; revision: number; object_key: string | null; updated_at: number; role: string };
@@ -67,7 +68,14 @@ async function sessionToken(env: Env, userId: string) {
   await env.DB.prepare("INSERT INTO sessions (hash,user_id,expires_at) VALUES (?,?,?)").bind(await digest(token), userId, Date.now() + 30 * day).run();
   return token;
 }
-const publicAccount = (user: Account) => ({ id: user.id, email: user.email, name: user.name });
+function ownerEmails(env: Env) {
+  return String(env.KINFORGE_OWNER_EMAILS || env.OWNER_EMAILS || "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
+}
+function isOwnerAccount(env: Env, user: Account) {
+  const owners = ownerEmails(env);
+  return owners.length > 0 && owners.includes(user.email.toLowerCase());
+}
+const publicAccount = (user: Account, env: Env) => ({ id: user.id, email: user.email, name: user.name, ownerDashboard: isOwnerAccount(env, user) });
 function authCodePurpose(value: unknown): AuthCodePurpose {
   if (value === "reset" || value === "login") return value;
   throw new Problem(400, "Choose password reset or email-code login.");
@@ -133,6 +141,83 @@ async function deliverSupportRequest(env: Env, ticket: Record<string, any>) {
     return false;
   }
 }
+function money(value: unknown) {
+  const text = String(value ?? "0").replace(/[^0-9.-]/g, "");
+  const amount = Number(text);
+  if (!Number.isFinite(amount) || amount < 0 || amount > 999999999) throw new Problem(400, "Enter a valid payment amount.");
+  return Math.round(amount * 100);
+}
+function currency(value: unknown) {
+  const next = String(value || "SGD").trim().toUpperCase();
+  if (!/^[A-Z]{3}$/.test(next)) throw new Problem(400, "Use a three-letter currency code.");
+  return next;
+}
+function ownerOnly(env: Env, user: Account) {
+  if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
+}
+function tableMissing(error: unknown) {
+  return error instanceof Error && /no such table|payment_events/i.test(error.message);
+}
+async function ownerRevenue(env: Env) {
+  try {
+    const [totals, recent, beta, accounts] = await Promise.all([
+      env.DB.prepare("SELECT currency,SUM(amount) AS gross,SUM(fee) AS fees,SUM(net) AS net,COUNT(*) AS payments FROM payment_events WHERE status IN ('paid','succeeded') GROUP BY currency ORDER BY currency").all(),
+      env.DB.prepare("SELECT id,provider,source,status,product,tier,customer_email AS customerEmail,customer_name AS customerName,currency,amount,fee,net,paid_at AS paidAt,created_at AS createdAt FROM payment_events ORDER BY paid_at DESC,created_at DESC LIMIT 50").all(),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM beta_interests").first<{ count: number }>().catch(() => ({ count: 0 })),
+      env.DB.prepare("SELECT COUNT(*) AS count FROM accounts").first<{ count: number }>().catch(() => ({ count: 0 }))
+    ]);
+    return json({ setupRequired: false, totals: totals.results, recent: recent.results, betaInterestCount: beta?.count || 0, accountCount: accounts?.count || 0 });
+  } catch (error) {
+    if (tableMissing(error)) return json({ setupRequired: true, totals: [], recent: [], betaInterestCount: 0, accountCount: 0 });
+    throw error;
+  }
+}
+async function addPaymentEvent(env: Env, request: Request) {
+  const data = await body(request, 32768);
+  const amount = money(data.amount);
+  const fee = money(data.fee || 0);
+  const now = Date.now();
+  const status = ["paid", "pending", "refunded", "failed"].includes(data.status) ? data.status : "paid";
+  const paidAt = Number.isFinite(Date.parse(String(data.paidAt || ""))) ? Date.parse(String(data.paidAt)) : now;
+  const id = crypto.randomUUID();
+  await env.DB.prepare("INSERT INTO payment_events (id,provider,provider_event_id,source,status,product,tier,customer_email,customer_name,currency,amount,fee,net,paid_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(id, "manual", id, "owner-entry", status, String(data.product || "KinForge payment").trim().slice(0, 160), String(data.tier || "").trim().slice(0, 120) || null, data.customerEmail ? emailAddress(data.customerEmail) : null, String(data.customerName || "").trim().slice(0, 160) || null, currency(data.currency), amount, fee, Math.max(0, amount - fee), paidAt, now).run();
+  return json({ ok: true, id }, 201);
+}
+function stripeSignatureParts(value: string) {
+  const parts: Record<string, string[]> = {};
+  for (const item of value.split(",")) {
+    const [key, part] = item.split("=", 2);
+    if (key && part) (parts[key] ||= []).push(part);
+  }
+  return parts;
+}
+async function hmacHex(secretKey: string, payload: string) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secretKey), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const signed = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(payload));
+  return [...new Uint8Array(signed)].map(byte => byte.toString(16).padStart(2, "0")).join("");
+}
+async function stripeWebhook(request: Request, env: Env) {
+  if (!env.STRIPE_WEBHOOK_SECRET) throw new Problem(503, "Stripe webhook signing is not configured.");
+  const raw = await readText(request, 1024 * 1024);
+  const signature = request.headers.get("stripe-signature") || "";
+  const parts = stripeSignatureParts(signature);
+  const timestamp = parts.t?.[0] || "";
+  if (!timestamp || !parts.v1?.length) throw new Problem(400, "Stripe signature was missing.");
+  const expected = await hmacHex(env.STRIPE_WEBHOOK_SECRET, `${timestamp}.${raw}`);
+  if (!parts.v1.some(value => equal(value, expected))) throw new Problem(400, "Stripe signature did not match.");
+  const event = JSON.parse(raw);
+  const object = event?.data?.object || {};
+  const metadata = object.metadata || {};
+  const amount = Number(object.amount_total ?? object.amount_paid ?? object.amount_received ?? object.amount ?? 0);
+  const email = object.customer_details?.email || object.customer_email || object.receipt_email || "";
+  const status = ["checkout.session.completed", "invoice.paid", "payment_intent.succeeded", "charge.succeeded"].includes(event.type) ? "paid" : String(object.status || event.type || "pending").slice(0, 40);
+  if (amount > 0) {
+    await env.DB.prepare("INSERT INTO payment_events (id,provider,provider_event_id,source,status,product,tier,customer_email,customer_name,currency,amount,fee,net,paid_at,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(provider,provider_event_id) DO UPDATE SET status=excluded.status,customer_email=excluded.customer_email,amount=excluded.amount,net=excluded.net,paid_at=excluded.paid_at")
+      .bind(crypto.randomUUID(), "stripe", String(event.id || object.id), "stripe-webhook", status, String(metadata.product || object.description || "KinForge subscription").slice(0, 160), String(metadata.tier || object.mode || "").slice(0, 120) || null, email ? String(email).toLowerCase().slice(0, 254) : null, object.customer_details?.name || null, currency(object.currency || "SGD"), amount, 0, amount, Number(object.created || event.created || 0) * 1000 || Date.now(), Date.now()).run();
+  }
+  return json({ received: true });
+}
 async function issueAuthCode(env: Env, request: Request, email: string, purpose: AuthCodePurpose, delivery: "code" | "link" = "code") {
   await rateLimit(env, request, `auth-code-${purpose}`, 5, 60 * 60000, email);
   const user = await env.DB.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first<Account>();
@@ -189,6 +274,7 @@ async function savedDocument(env: Env, item: Library): Promise<LibraryDocument |
 async function api(request: Request, env: Env, ctx: ExecutionContext) {
   const url = new URL(request.url); const path = url.pathname; const method = request.method;
   const oauth = await driveOAuth(request, env, ctx); if (oauth) return oauth;
+  if (path === "/api/stripe/webhook" && method === "POST") return stripeWebhook(request, env);
   if (method !== "GET" && method !== "HEAD") {
     if (request.headers.get("X-KinForge-Client") !== "1" || (request.headers.get("origin") && request.headers.get("origin") !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Problem(403, "This request must come from KinForge.");
   }
@@ -234,7 +320,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
       env.DB.prepare("INSERT INTO library_members (library_id,user_id,role) VALUES (?,?,'owner')").bind(libraryId, id)
     ]);
     const user = await env.DB.prepare("SELECT * FROM accounts WHERE id=?").bind(id).first<Account>();
-    return json({ user: publicAccount(user!), recoveryCode }, 201, { "Set-Cookie": cookie(await sessionToken(env, id), request) });
+    return json({ user: publicAccount(user!, env), recoveryCode }, 201, { "Set-Cookie": cookie(await sessionToken(env, id), request) });
   }
   if (path === "/api/auth/login" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email);
@@ -243,7 +329,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     const password = typeof data.password === "string" ? data.password.slice(0, 256) : "";
     const encoded = user?.password || `scrypt-v1:${"0".repeat(64)}:${"0".repeat(64)}`;
     if (!await verifyPassword(password, encoded) || !user) throw new Problem(401, "The email or password did not match.");
-    return json({ user: publicAccount(user) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   if (path === "/api/auth/code/request" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email); const purpose = authCodePurpose(data.purpose);
@@ -262,9 +348,9 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
         env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id),
         env.DB.prepare("UPDATE auth_codes SET used_at=? WHERE account_id=? AND used_at IS NULL").bind(Date.now(), user.id)
       ]);
-      return json({ user: publicAccount(user), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+      return json({ user: publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
     }
-    return json({ user: publicAccount(user) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   if (path === "/api/auth/recover" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email); const password = validPassword(data.password);
@@ -276,13 +362,22 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
       env.DB.prepare("UPDATE accounts SET password=?,recovery_hash=? WHERE id=?").bind(nextHash, await digest(recoveryCode), user.id),
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
     ]);
-    return json({ user: publicAccount(user), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   const user = await currentAccount(env, request);
-  if (path === "/api/auth/me" && method === "GET") return json({ user: publicAccount(user) });
+  if (path === "/api/auth/me" && method === "GET") return json({ user: publicAccount(user, env) });
   if (path === "/api/auth/logout" && method === "POST") {
     await env.DB.prepare("DELETE FROM sessions WHERE hash=?").bind(await digest(requestToken(request))).run();
     return json({ ok: true }, 200, { "Set-Cookie": cookie("", request, 0) });
+  }
+  if (path === "/api/owner/revenue" && method === "GET") {
+    ownerOnly(env, user);
+    return ownerRevenue(env);
+  }
+  if (path === "/api/owner/revenue/events" && method === "POST") {
+    ownerOnly(env, user);
+    await rateLimit(env, request, "owner-revenue-events", 120, 60 * 60000, user.id);
+    return addPaymentEvent(env, request);
   }
   if (path === "/api/beta/interest" && method === "GET") {
     const interest = await env.DB.prepare("SELECT plan,interval,discount_code,created_at,updated_at FROM beta_interests WHERE account_id=?").bind(user.id).first();

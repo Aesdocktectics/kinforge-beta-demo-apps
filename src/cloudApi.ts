@@ -1,7 +1,7 @@
 import { endpointForPrivateAccess, readPrivateAccessSettings } from "./privateAccess";
 
 export const CLOUD_URL = "https://kinforge-genealogy-studio.marianneleong3.chatgpt.site";
-export type CloudUser = { id: string; name: string; email: string };
+export type CloudUser = { id: string; name: string; email: string; ownerDashboard?: boolean };
 export type CloudLibrary = { id: string; name: string; role: "owner" | "editor" | "viewer"; revision: number; owner_email: string };
 export class CloudError extends Error { constructor(public status: number, message: string, public code?: string) { super(message); } }
 export async function cloudRequest<T = any>(path: string, method = "GET", data?: unknown, raw = false): Promise<T> {
