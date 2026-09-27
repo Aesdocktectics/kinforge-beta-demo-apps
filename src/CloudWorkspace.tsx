@@ -291,10 +291,29 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     try { await navigator.clipboard.writeText(createdCode); setMessage("Special access code copied."); }
     catch { setMessage(`Copy this special access code: ${createdCode}`); }
   }
+  async function copyInviteMessage() {
+    if (!createdCode) return;
+    const appLink = `${window.location.origin}${window.location.pathname}`;
+    const recipient = form.recipientEmail ? ` for ${form.recipientEmail}` : "";
+    const text = [
+      `You have Special Access to KinForge Genealogy Studio Supreme Suite${recipient}.`,
+      "",
+      `Special access code: ${createdCode}`,
+      `Open KinForge: ${appLink}`,
+      "",
+      "Create or sign in to your KinForge account, open Accounts & sharing or Private Access, then redeem this code. Please keep the code private because it unlocks the Special Access edition for the intended account."
+    ].join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setMessage("Special access invite message copied for your friend.");
+    } catch {
+      setMessage(text);
+    }
+  }
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-access" role="dialog" aria-modal="true" aria-labelledby="owner-access-title">
     <button className="cloud-close" aria-label="Close special access" onClick={onClose}><X size={20} /></button>
     <h2 id="owner-access-title">Signups & special access</h2>
-    <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow.</p>
+    <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow, so the Special Access version can be managed from inside your owner app.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The special-access table is not active on this deployment yet. Publish the latest build or run the database migration.</p>}
     <div className="revenue-metrics">
       <article><span>Accounts</span><strong>{summary?.accounts.length ?? "..."}</strong><small>All KinForge accounts in this cloud database</small></article>
@@ -303,6 +322,10 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
       <article><span>Access codes</span><strong>{summary?.codes.length ?? "..."}</strong><small>Manual owner-created special access codes</small></article>
       <article><span>Redeemed</span><strong>{summary ? summary.codes.filter(code => code.useCount > 0).length : "..."}</strong><small>Codes already used by signed-in accounts</small></article>
     </div>
+    <section className="owner-special-sync" aria-labelledby="special-sync-title">
+      <h3 id="special-sync-title"><ShieldCheck size={17} />Special Access project sync</h3>
+      <p>The owner app is the control room for the Special Access version: create a code, optionally lock it to a friend's email, track whether it was redeemed, revoke access codes, and copy a ready-to-send invite message without exposing the owner dashboard to ordinary users.</p>
+    </section>
     <section className="owner-revenue-entry" aria-labelledby="create-access-title">
       <h3 id="create-access-title"><KeyRound size={17} />Create special access code</h3>
       <div className="revenue-form-grid">
@@ -313,8 +336,8 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
         <label className="field"><span>Expires on</span><input className="control" type="date" value={form.expiresAt} onChange={event => setForm({ ...form, expiresAt: event.target.value })} /></label>
         <label className="field"><span>Owner note</span><input className="control" value={form.note} onChange={event => setForm({ ...form, note: event.target.value })} /></label>
       </div>
-      <div className="button-row"><button className="button" disabled={busy || !form.label.trim()} onClick={() => void createCode()}><PlusCircle size={16} />Create code</button>{createdCode && <button className="button secondary" onClick={() => void copyCode()}><Copy size={16} />Copy new code</button>}<button className="button secondary" disabled={busy} onClick={() => void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not refresh."))}><RefreshCw size={16} />Refresh</button></div>
-      {createdCode && <p className="invitation-code"><code>{createdCode}</code></p>}
+      <div className="button-row"><button className="button" disabled={busy || !form.label.trim()} onClick={() => void createCode()}><PlusCircle size={16} />Create code</button>{createdCode && <button className="button secondary" onClick={() => void copyCode()}><Copy size={16} />Copy code</button>}{createdCode && <button className="button secondary" onClick={() => void copyInviteMessage()}><Send size={16} />Copy friend invite</button>}<button className="button secondary" disabled={busy} onClick={() => void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not refresh."))}><RefreshCw size={16} />Refresh</button></div>
+      {createdCode && <p className="invitation-code"><code>{createdCode}</code><span>Give this to the person you choose. If you entered a recipient email, only that email can redeem it.</span></p>}
     </section>
     <section className="owner-access-columns">
       <div>

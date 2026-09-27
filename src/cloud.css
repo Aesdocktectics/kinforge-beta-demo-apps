@@ -59,6 +59,11 @@
 .support-message dd { margin: 0; overflow-wrap: anywhere; }
 .support-message pre { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-family: inherit; }
 .support-thread { margin: 18px 0; }
+.owner-special-sync { margin: 16px 0; padding: 14px; border: 1px solid #ead4dd; border-left: 4px solid #9f6f7d; background: #fff8fb; color: #5d4751; }
+.owner-special-sync h3 { display: flex; align-items: center; gap: 8px; margin-top: 0; }
+.owner-special-sync p { margin-bottom: 0; }
+.owner-access .invitation-code { align-items: flex-start; flex-direction: column; }
+.owner-access .invitation-code span { color: #5f7174; font-size: 13px; }
 .sync-conflict { border: 1px solid #ccd7d9; padding: 12px; margin: 16px 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-width: 0; }
 .sync-conflict legend { font-size: 12px; overflow-wrap: anywhere; }
 .sync-conflict label { min-width: 0; }
