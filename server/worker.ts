@@ -156,7 +156,7 @@ function ownerOnly(env: Env, user: Account) {
   if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
 }
 function tableMissing(error: unknown) {
-  return error instanceof Error && /no such table|payment_events/i.test(error.message);
+  return error instanceof Error && /no such table|payment_events|special_access_codes/i.test(error.message);
 }
 async function ownerRevenue(env: Env) {
   try {
@@ -171,6 +171,42 @@ async function ownerRevenue(env: Env) {
     if (tableMissing(error)) return json({ setupRequired: true, totals: [], recent: [], betaInterestCount: 0, accountCount: 0 });
     throw error;
   }
+}
+async function ownerAccessSummary(env: Env) {
+  try {
+    const [signups, codes] = await Promise.all([
+      env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,a.created_at AS accountCreatedAt,b.plan,b.interval,b.discount_code AS discountCode,b.created_at AS createdAt,b.updated_at AS updatedAt FROM beta_interests b JOIN accounts a ON a.id=b.account_id ORDER BY b.updated_at DESC LIMIT 250").all(),
+      env.DB.prepare("SELECT hash,label,recipient_email AS recipientEmail,note,created_at AS createdAt,expires_at AS expiresAt,max_uses AS maxUses,use_count AS useCount,revoked_at AS revokedAt,last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all()
+    ]);
+    return json({ setupRequired: false, signups: signups.results, codes: codes.results });
+  } catch (error) {
+    if (tableMissing(error)) return json({ setupRequired: true, signups: [], codes: [] });
+    throw error;
+  }
+}
+async function createSpecialAccessCode(env: Env, request: Request, user: Account) {
+  const data = await body(request, 32768);
+  const code = String(data.code || secret().slice(0, 16)).trim().replace(/\s+/g, "-");
+  if (!/^[A-Za-z0-9_-]{8,64}$/.test(code)) throw new Problem(400, "Use 8 to 64 letters, numbers, hyphens, or underscores for the code.");
+  const recipient = data.recipientEmail ? emailAddress(data.recipientEmail) : null;
+  const maxUses = Math.max(1, Math.min(100, Number(data.maxUses || 1) || 1));
+  const expiresAt = data.expiresAt && Number.isFinite(Date.parse(String(data.expiresAt))) ? Date.parse(String(data.expiresAt)) : null;
+  await env.DB.prepare("INSERT INTO special_access_codes (hash,label,recipient_email,note,created_by,created_at,expires_at,max_uses,use_count) VALUES (?,?,?,?,?,?,?,?,0)")
+    .bind(await digest(`special-access:${code}`), String(data.label || "Special access").trim().slice(0, 120), recipient, String(data.note || "").trim().slice(0, 1000) || null, user.id, Date.now(), expiresAt, maxUses).run();
+  return json({ ok: true, code, label: String(data.label || "Special access").trim().slice(0, 120), recipientEmail: recipient, expiresAt, maxUses }, 201);
+}
+async function revokeSpecialAccessCode(env: Env, hash: string) {
+  await env.DB.prepare("UPDATE special_access_codes SET revoked_at=? WHERE hash=?").bind(Date.now(), hash).run();
+  return json({ ok: true });
+}
+async function redeemSpecialAccessCode(env: Env, data: Record<string, any>, user: Account) {
+  const code = String(data.code || "").trim();
+  const hash = await digest(`special-access:${code}`);
+  const record = await env.DB.prepare("SELECT * FROM special_access_codes WHERE hash=?").bind(hash).first<{ recipient_email: string | null; expires_at: number | null; max_uses: number; use_count: number; revoked_at: number | null }>();
+  if (!record || record.revoked_at || record.use_count >= record.max_uses || record.expires_at && record.expires_at < Date.now()) throw new Problem(404, "This special access code is invalid, expired, or already used.");
+  if (record.recipient_email && record.recipient_email !== user.email) throw new Problem(403, "This special access code was created for a different account email.");
+  await env.DB.prepare("UPDATE special_access_codes SET use_count=use_count+1,last_redeemed_by=?,last_redeemed_at=? WHERE hash=? AND revoked_at IS NULL AND use_count<max_uses").bind(user.id, Date.now(), hash).run();
+  return json({ ok: true, message: "Special access is linked to this KinForge account." });
 }
 async function addPaymentEvent(env: Env, request: Request) {
   const data = await body(request, 32768);
@@ -378,6 +414,24 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     ownerOnly(env, user);
     await rateLimit(env, request, "owner-revenue-events", 120, 60 * 60000, user.id);
     return addPaymentEvent(env, request);
+  }
+  if (path === "/api/owner/access" && method === "GET") {
+    ownerOnly(env, user);
+    return ownerAccessSummary(env);
+  }
+  if (path === "/api/owner/special-access-codes" && method === "POST") {
+    ownerOnly(env, user);
+    await rateLimit(env, request, "owner-special-access", 120, 60 * 60000, user.id);
+    return createSpecialAccessCode(env, request, user);
+  }
+  const specialCode = /^\/api\/owner\/special-access-codes\/([a-f0-9]{64})$/.exec(path);
+  if (specialCode && method === "DELETE") {
+    ownerOnly(env, user);
+    return revokeSpecialAccessCode(env, specialCode[1]);
+  }
+  if (path === "/api/special-access/redeem" && method === "POST") {
+    await rateLimit(env, request, "special-access-redeem", 20, 15 * 60000, user.id);
+    return redeemSpecialAccessCode(env, await body(request), user);
   }
   if (path === "/api/beta/interest" && method === "GET") {
     const interest = await env.DB.prepare("SELECT plan,interval,discount_code,created_at,updated_at FROM beta_interests WHERE account_id=?").bind(user.id).first();

@@ -81,3 +81,21 @@ export const paymentEvents = sqliteTable("payment_events", {
   index("payment_events_currency").on(t.currency, t.paidAt),
   uniqueIndex("payment_events_provider_event").on(t.provider, t.providerEventId)
 ]);
+
+export const specialAccessCodes = sqliteTable("special_access_codes", {
+  hash: text("hash").primaryKey(),
+  label: text("label").notNull(),
+  recipientEmail: text("recipient_email"),
+  note: text("note"),
+  createdBy: text("created_by").notNull().references(() => accounts.id),
+  createdAt: integer("created_at").notNull(),
+  expiresAt: integer("expires_at"),
+  maxUses: integer("max_uses").notNull().default(1),
+  useCount: integer("use_count").notNull().default(0),
+  revokedAt: integer("revoked_at"),
+  lastRedeemedBy: text("last_redeemed_by").references(() => accounts.id),
+  lastRedeemedAt: integer("last_redeemed_at")
+}, t => [
+  index("special_access_codes_created").on(t.createdAt),
+  index("special_access_codes_recipient").on(t.recipientEmail)
+]);
