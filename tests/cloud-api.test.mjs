@@ -24,7 +24,7 @@ before(async () => {
     delivered.push(await request.json());
     return new Response("ok", { status: 200 });
   };
-  mf = new Miniflare({ modules: true, scriptPath: "dist/server/index.js", compatibilityDate: "2024-11-01", d1Databases: ["DB"], r2Buckets: ["BUCKET"], outboundService, bindings: { EMAIL_CODE_ENDPOINT: "https://mail.test/send", EMAIL_CODE_TOKEN: "mail-test-token", EMAIL_CODE_FROM: "KinForge <test@kinforge.local>" } }); db = await mf.getD1Database("DB");
+  mf = new Miniflare({ modules: true, scriptPath: "dist/server/index.js", compatibilityDate: "2024-11-01", d1Databases: ["DB"], r2Buckets: ["BUCKET"], outboundService, bindings: { EMAIL_CODE_ENDPOINT: "https://mail.test/send", EMAIL_CODE_TOKEN: "mail-test-token", EMAIL_CODE_FROM: "KinForge <test@kinforge.local>", NEWSLETTER_EMAIL_ENDPOINT: "https://mail.test/newsletter", NEWSLETTER_EMAIL_TOKEN: "newsletter-test-token", KINFORGE_OWNER_EMAILS: "owner@example.test" } }); db = await mf.getD1Database("DB");
   for (const name of (await readdir("drizzle")).filter(n => n.endsWith(".sql")).sort()) for (const sql of (await readFile(`drizzle/${name}`, "utf8")).split("--> statement-breakpoint").filter(s => s.trim())) await db.prepare(sql.trim()).run();
   owner = await account("owner@example.test"); other = await account("other@example.test"); viewer = await account("viewer@example.test");
 });
@@ -54,6 +54,28 @@ test("beta interest is account protected and records interest without payment da
   assert.equal((await call("/api/beta/interest", "POST", { plan: "beta", interval: "month", consent: false }, owner.cookie)).status, 400);
   assert.equal((await call("/api/beta/interest", "DELETE", undefined, owner.cookie)).status, 200);
   assert.equal((await call("/api/beta/interest", "GET", undefined, owner.cookie)).body.interest, null);
+});
+test("owner can see accounts and release newsletters to subscribers", async () => {
+  const signup = await call("/api/beta/interest", "POST", { consent: true }, other.cookie);
+  assert.equal(signup.status, 201, JSON.stringify(signup.body));
+  const denied = await call("/api/owner/access", "GET", undefined, other.cookie);
+  assert.equal(denied.status, 403);
+  const access = await call("/api/owner/access", "GET", undefined, owner.cookie);
+  assert.equal(access.status, 200, JSON.stringify(access.body));
+  assert.ok(access.body.accounts.some(account => account.email === "owner@example.test"));
+  assert.ok(access.body.signups.some(account => account.email === "other@example.test"));
+  assert.ok(access.body.subscribers.some(account => account.email === "other@example.test"));
+  delivered.length = 0;
+  const release = await call("/api/owner/newsletters", "POST", { title: "Owner update", subject: "KinForge owner newsletter", summary: "Short update", content: "Release notes and download links.", attachments: [{ name: "notes.txt", mime: "text/plain", dataUrl: "data:text/plain;base64,bm90ZXM=" }] }, owner.cookie);
+  assert.equal(release.status, 201, JSON.stringify(release.body));
+  assert.equal(release.body.deliveryStatus, "sent");
+  assert.equal(release.body.attachmentCount, 1);
+  assert.ok(release.body.recipientCount >= 2);
+  assert.equal(delivered.at(-1).source, "kinforge-owner-newsletter");
+  assert.equal(delivered.at(-1).subject, "KinForge owner newsletter");
+  const newsletters = await call("/api/owner/newsletters", "GET", undefined, owner.cookie);
+  assert.equal(newsletters.status, 200, JSON.stringify(newsletters.body));
+  assert.ok(newsletters.body.releases.some(item => item.title === "Owner update" && item.deliveryStatus === "sent"));
 });
 test("whole library including reports, collections, subcollections and books survives another session", async () => {
   fixture.books.push({ id: "book_extra", title: "Archive", description: "A second book" });

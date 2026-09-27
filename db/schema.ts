@@ -99,3 +99,35 @@ export const specialAccessCodes = sqliteTable("special_access_codes", {
   index("special_access_codes_created").on(t.createdAt),
   index("special_access_codes_recipient").on(t.recipientEmail)
 ]);
+
+export const newsletterSubscribers = sqliteTable("newsletter_subscribers", {
+  accountId: text("account_id").primaryKey().references(() => accounts.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  name: text("name"),
+  status: text("status").notNull().default("subscribed"),
+  source: text("source").notNull().default("account"),
+  createdAt: integer("created_at").notNull(),
+  updatedAt: integer("updated_at").notNull()
+}, t => [
+  index("newsletter_subscribers_status").on(t.status, t.updatedAt),
+  index("newsletter_subscribers_email").on(t.email)
+]);
+
+export const newsletterReleases = sqliteTable("newsletter_releases", {
+  id: text("id").primaryKey(),
+  title: text("title").notNull(),
+  subject: text("subject").notNull(),
+  summary: text("summary"),
+  status: text("status").notNull(),
+  objectKey: text("object_key").notNull(),
+  attachmentCount: integer("attachment_count").notNull().default(0),
+  size: integer("size").notNull().default(0),
+  createdBy: text("created_by").notNull().references(() => accounts.id),
+  createdAt: integer("created_at").notNull(),
+  releasedAt: integer("released_at"),
+  recipientCount: integer("recipient_count").notNull().default(0),
+  deliveryStatus: text("delivery_status").notNull().default("published-only-email-not-configured")
+}, t => [
+  index("newsletter_releases_created").on(t.createdAt),
+  index("newsletter_releases_status").on(t.status, t.createdAt)
+]);

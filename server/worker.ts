@@ -9,6 +9,7 @@ import { publicWebsiteRoutes } from "./publicWebsite";
 type Env = DriveEnv & ReleaseEnv & {
   ASSETS: Fetcher;
   EMAIL_CODE_ENDPOINT?: string; EMAIL_CODE_TOKEN?: string; EMAIL_CODE_FROM?: string;
+  NEWSLETTER_EMAIL_ENDPOINT?: string; NEWSLETTER_EMAIL_TOKEN?: string; NEWSLETTER_EMAIL_FROM?: string;
   SERENE_RELAY_SUPPORT_ENDPOINT?: string; SERENE_RELAY_SUPPORT_TOKEN?: string; SERENE_RELAY_SUPPORT_TO?: string; SERENE_RELAY_SUPPORT_FROM?: string;
   KINFORGE_OWNER_EMAILS?: string; KINFORGE_ADMIN_EMAILS?: string; OWNER_EMAILS?: string; STRIPE_WEBHOOK_SECRET?: string;
 };
@@ -156,7 +157,7 @@ function ownerOnly(env: Env, user: Account) {
   if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
 }
 function tableMissing(error: unknown) {
-  return error instanceof Error && /no such table|payment_events|special_access_codes/i.test(error.message);
+  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases/i.test(error.message);
 }
 async function ownerRevenue(env: Env) {
   try {
@@ -174,15 +175,77 @@ async function ownerRevenue(env: Env) {
 }
 async function ownerAccessSummary(env: Env) {
   try {
-    const [signups, codes] = await Promise.all([
+    const [accounts, signups, subscribers, codes] = await Promise.all([
+      env.DB.prepare("SELECT a.id,a.email,a.name,a.created_at AS createdAt FROM accounts a ORDER BY a.created_at DESC LIMIT 500").all(),
       env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,a.created_at AS accountCreatedAt,b.plan,b.interval,b.discount_code AS discountCode,b.created_at AS createdAt,b.updated_at AS updatedAt FROM beta_interests b JOIN accounts a ON a.id=b.account_id ORDER BY b.updated_at DESC LIMIT 250").all(),
-      env.DB.prepare("SELECT hash,label,recipient_email AS recipientEmail,note,created_at AS createdAt,expires_at AS expiresAt,max_uses AS maxUses,use_count AS useCount,revoked_at AS revokedAt,last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all()
+      env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,COALESCE(s.status,'subscribed') AS status,COALESCE(s.source,CASE WHEN b.account_id IS NOT NULL THEN 'beta-interest' ELSE 'account' END) AS source,COALESCE(s.created_at,a.created_at) AS createdAt,COALESCE(s.updated_at,a.created_at) AS updatedAt FROM accounts a LEFT JOIN beta_interests b ON b.account_id=a.id LEFT JOIN newsletter_subscribers s ON s.account_id=a.id WHERE COALESCE(s.status,'subscribed')='subscribed' ORDER BY COALESCE(s.updated_at,a.created_at) DESC LIMIT 500").all(),
+      env.DB.prepare("SELECT c.hash,c.label,c.recipient_email AS recipientEmail,c.note,c.created_at AS createdAt,c.expires_at AS expiresAt,c.max_uses AS maxUses,c.use_count AS useCount,c.revoked_at AS revokedAt,c.last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all()
     ]);
-    return json({ setupRequired: false, signups: signups.results, codes: codes.results });
+    return json({ setupRequired: false, accounts: accounts.results, signups: signups.results, subscribers: subscribers.results, codes: codes.results });
   } catch (error) {
-    if (tableMissing(error)) return json({ setupRequired: true, signups: [], codes: [] });
+    if (tableMissing(error)) return json({ setupRequired: true, accounts: [], signups: [], subscribers: [], codes: [] });
     throw error;
   }
+}
+async function ownerNewsletterSummary(env: Env) {
+  try {
+    const [subscribers, releases] = await Promise.all([
+      env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,COALESCE(s.status,'subscribed') AS status,COALESCE(s.source,CASE WHEN b.account_id IS NOT NULL THEN 'beta-interest' ELSE 'account' END) AS source,COALESCE(s.updated_at,a.created_at) AS updatedAt FROM accounts a LEFT JOIN beta_interests b ON b.account_id=a.id LEFT JOIN newsletter_subscribers s ON s.account_id=a.id WHERE COALESCE(s.status,'subscribed')='subscribed' ORDER BY COALESCE(s.updated_at,a.created_at) DESC LIMIT 1000").all(),
+      env.DB.prepare("SELECT id,title,subject,summary,status,object_key AS objectKey,attachment_count AS attachmentCount,size,created_at AS createdAt,released_at AS releasedAt,recipient_count AS recipientCount,delivery_status AS deliveryStatus FROM newsletter_releases ORDER BY created_at DESC LIMIT 100").all()
+    ]);
+    return json({ setupRequired: false, subscribers: subscribers.results, releases: releases.results });
+  } catch (error) {
+    if (tableMissing(error)) return json({ setupRequired: true, subscribers: [], releases: [] });
+    throw error;
+  }
+}
+async function deliverNewsletter(env: Env, payload: Record<string, any>) {
+  const endpoint = env.NEWSLETTER_EMAIL_ENDPOINT || env.SERENE_RELAY_SUPPORT_ENDPOINT;
+  const token = env.NEWSLETTER_EMAIL_TOKEN || env.SERENE_RELAY_SUPPORT_TOKEN;
+  if (!endpoint || !token) return "published-only-email-not-configured";
+  try {
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...payload,
+        from: env.NEWSLETTER_EMAIL_FROM || env.SERENE_RELAY_SUPPORT_FROM || "KinForge Newsletters <newsletter@kinforge.local>",
+        source: "kinforge-owner-newsletter"
+      })
+    });
+    return response.ok ? endpoint === env.NEWSLETTER_EMAIL_ENDPOINT ? "sent" : "sent-to-serene-relay" : "published-email-delivery-failed";
+  } catch {
+    return "published-email-delivery-failed";
+  }
+}
+async function createNewsletterRelease(env: Env, request: Request, user: Account) {
+  const data = await body(request, 100 * 1024 * 1024);
+  const title = String(data.title || "").trim().slice(0, 180);
+  const subject = String(data.subject || title || "").trim().slice(0, 180);
+  const summary = String(data.summary || "").trim().slice(0, 1000);
+  const content = String(data.content || "").trim();
+  if (!title || !subject || !content) throw new Problem(400, "Add a title, subject, and newsletter body before releasing.");
+  const subscribers = await env.DB.prepare("SELECT a.id AS accountId,a.email,a.name FROM accounts a LEFT JOIN newsletter_subscribers s ON s.account_id=a.id WHERE COALESCE(s.status,'subscribed')='subscribed' ORDER BY a.created_at DESC LIMIT 5000").all<{ accountId: string; email: string; name: string }>();
+  const attachments: { name: string; mime: string; objectKey: string; size: number }[] = [];
+  const id = crypto.randomUUID();
+  const rawAttachments = Array.isArray(data.attachments) ? data.attachments.slice(0, 50) : [];
+  for (const attachment of rawAttachments) {
+    const dataUrl = String(attachment?.dataUrl || "");
+    if (!dataUrl.startsWith("data:")) continue;
+    const name = String(attachment?.name || "attachment").replace(/[^\w .()[\]-]+/g, "_").slice(0, 160) || "attachment";
+    const objectKey = `owner/newsletters/${id}/attachments/${crypto.randomUUID()}-${name}`;
+    await env.BUCKET.put(objectKey, dataUrl, { httpMetadata: { contentType: "text/plain" } });
+    attachments.push({ name, mime: String(attachment?.mime || "application/octet-stream").slice(0, 120), objectKey, size: dataUrl.length });
+  }
+  const releasedAt = Date.now();
+  const document = { id, title, subject, summary, content, attachments, releasedAt, createdBy: user.email, subscribers: subscribers.results };
+  const objectKey = `owner/newsletters/${id}/release.json`;
+  const serialized = JSON.stringify(document);
+  await env.BUCKET.put(objectKey, serialized, { httpMetadata: { contentType: "application/json" } });
+  const deliveryStatus = await deliverNewsletter(env, { title, subject, summary, text: content, subscribers: subscribers.results, attachments, newsletterId: id });
+  await env.DB.prepare("INSERT INTO newsletter_releases (id,title,subject,summary,status,object_key,attachment_count,size,created_by,created_at,released_at,recipient_count,delivery_status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)")
+    .bind(id, title, subject, summary || null, "released", objectKey, attachments.length, serialized.length + attachments.reduce((sum, item) => sum + item.size, 0), user.id, releasedAt, releasedAt, subscribers.results.length, deliveryStatus).run();
+  return json({ ok: true, id, deliveryStatus, recipientCount: subscribers.results.length, attachmentCount: attachments.length }, 201);
 }
 async function createSpecialAccessCode(env: Env, request: Request, user: Account) {
   const data = await body(request, 32768);
@@ -353,7 +416,8 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO accounts (id,email,name,password,recovery_hash,created_at,terms_accepted_at,terms_version,privacy_accepted_at,privacy_version) VALUES (?,?,?,?,?,?,?,?,?,?)").bind(id, email, String(data.name || email.split("@")[0]).trim().slice(0, 100), hash, recoveryHash, Date.now(), Date.now(), "kinforge-terms-v1", Date.now(), "kinforge-privacy-v1"),
       env.DB.prepare("INSERT INTO libraries (id,owner_id,name,revision,updated_at) VALUES (?,?,?,0,?)").bind(libraryId, id, "My relationship library", Date.now()),
-      env.DB.prepare("INSERT INTO library_members (library_id,user_id,role) VALUES (?,?,'owner')").bind(libraryId, id)
+      env.DB.prepare("INSERT INTO library_members (library_id,user_id,role) VALUES (?,?,'owner')").bind(libraryId, id),
+      env.DB.prepare("INSERT INTO newsletter_subscribers (account_id,email,name,status,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET email=excluded.email,name=excluded.name,status='subscribed',updated_at=excluded.updated_at").bind(id, email, String(data.name || email.split("@")[0]).trim().slice(0, 100), "subscribed", "account", Date.now(), Date.now())
     ]);
     const user = await env.DB.prepare("SELECT * FROM accounts WHERE id=?").bind(id).first<Account>();
     return json({ user: publicAccount(user!, env), recoveryCode }, 201, { "Set-Cookie": cookie(await sessionToken(env, id), request) });
@@ -419,6 +483,15 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     ownerOnly(env, user);
     return ownerAccessSummary(env);
   }
+  if (path === "/api/owner/newsletters" && method === "GET") {
+    ownerOnly(env, user);
+    return ownerNewsletterSummary(env);
+  }
+  if (path === "/api/owner/newsletters" && method === "POST") {
+    ownerOnly(env, user);
+    await rateLimit(env, request, "owner-newsletters", 20, 60 * 60000, user.id);
+    return createNewsletterRelease(env, request, user);
+  }
   if (path === "/api/owner/special-access-codes" && method === "POST") {
     ownerOnly(env, user);
     await rateLimit(env, request, "owner-special-access", 120, 60 * 60000, user.id);
@@ -442,8 +515,11 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     const plan = "beta";
     const interval = "month";
     if (!data.consent) throw new Problem(400, "Confirm that this is interest registration only.");
-    await env.DB.prepare("INSERT INTO beta_interests (account_id,plan,interval,discount_code,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET plan=excluded.plan,interval=excluded.interval,discount_code=excluded.discount_code,updated_at=excluded.updated_at")
-      .bind(user.id, plan, interval, null, Date.now(), Date.now()).run();
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO beta_interests (account_id,plan,interval,discount_code,created_at,updated_at) VALUES (?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET plan=excluded.plan,interval=excluded.interval,discount_code=excluded.discount_code,updated_at=excluded.updated_at")
+        .bind(user.id, plan, interval, null, Date.now(), Date.now()),
+      env.DB.prepare("INSERT INTO newsletter_subscribers (account_id,email,name,status,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET email=excluded.email,name=excluded.name,status='subscribed',source='beta-interest',updated_at=excluded.updated_at").bind(user.id, user.email, user.name, "subscribed", "beta-interest", Date.now(), Date.now())
+    ]);
     return json({ ok: true, interest: { plan, interval, discountCode: null } }, 201);
   }
   if (path === "/api/beta/interest" && method === "DELETE") {

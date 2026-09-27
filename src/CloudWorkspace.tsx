@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck } from "lucide-react";
+import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText } from "lucide-react";
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
@@ -30,6 +30,7 @@ export default function CloudWorkspace() {
   const [updatesOpen, setUpdatesOpen] = useState(false);
   const [revenueOpen, setRevenueOpen] = useState(false);
   const [accessOpen, setAccessOpen] = useState(false);
+  const [newsletterOpen, setNewsletterOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [choices, setChoices] = useState<ConflictChoices>({});
   const sync = useRef<CloudSync | null>(null);
@@ -96,14 +97,14 @@ export default function CloudWorkspace() {
   async function signOut() {
     try {
       await cloudRequest("/api/auth/logout", "POST", {});
-      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setError("");
+      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Reconnect before signing out."); }
   }
   if (demo) return <App cloud={{ state: demo, account: { id: "demo", name: "Guest demo", email: "" }, onChange: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, onSave: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, toolbar: <span className="cloud-status">Demo - saved on this device</span>, onSignOut: () => { setDemo(null); sessionStorage.removeItem("kinforge-demo-session"); }, readOnly: false, saved: true, demo: true, canManagePrivacy: true }} />;
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
   const toolbar = <div className="cloud-toolbar"><button className={`cloud-status ${view?.error ? "cloud-warning" : ""}`} onClick={() => void sync.current?.sync()} title={view?.lastSaved ? `Last saved ${new Date(view.lastSaved).toLocaleString()}` : "Sync now"} aria-label={`Cloud sync: ${view?.status || "Connecting"}`}>
-    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Owner revenue</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Special access</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
+    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Owner revenue</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Owner access</button>}{user.ownerDashboard && <button className="button secondary" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
   return <>
     {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
     {view?.preview && <div className="cloud-notice" role="status">Opening the full saved library. Editing and downloads will be available when it is ready.</div>}
@@ -113,6 +114,7 @@ export default function CloudWorkspace() {
     {drivesOpen && library?.role === "owner" && <CloudDrives library={library} onClose={() => setDrivesOpen(false)} />}
     {revenueOpen && user.ownerDashboard && <OwnerRevenueDialog onClose={() => setRevenueOpen(false)} />}
     {accessOpen && user.ownerDashboard && <OwnerAccessDialog onClose={() => setAccessOpen(false)} />}
+    {newsletterOpen && user.ownerDashboard && <OwnerNewsletterDialog onClose={() => setNewsletterOpen(false)} />}
     {updatesOpen && <UpdateCenter currentState={view?.state ?? null} onClose={() => setUpdatesOpen(false)} />}
     {exportMessage && !recovery && <div className="cloud-export-notice" role="status"><span>{exportMessage}</span><button aria-label="Dismiss export message" onClick={() => setExportMessage("")}><X size={16} /></button></div>}
     {!!view?.conflicts.length && !recovery && <div className="cloud-scrim"><section className="cloud-dialog wide" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><h2 id="conflict-title">Changes need your choice</h2><p>Two devices changed the same information. Choose which version to keep for each item.</p>{view.conflicts.map(conflict => <fieldset className="sync-conflict" key={conflict.path}><legend>{conflict.path}</legend>{(["local", "remote"] as const).map(side => <label key={side}><input type="radio" name={conflict.path} checked={choices[conflict.path] === side} onChange={() => setChoices(previous => ({ ...previous, [conflict.path]: side }))} /><strong>{side === "local" ? "This device" : "Cloud version"}</strong><pre>{formatValue(conflict[side])}</pre></label>)}</fieldset>)}<button className="button" disabled={view.conflicts.some(c => !choices[c.path])} onClick={() => void sync.current?.resolve(choices).catch(e => setError(e.message))}>Save my choices</button></section></div>}
@@ -170,9 +172,13 @@ function formatValue(value: unknown) { if (value === undefined) return "Deleted"
 type RevenueTotal = { currency: string; gross: number; fees: number; net: number; payments: number };
 type RevenueEvent = { id: string; provider: string; source: string; status: string; product: string; tier?: string; customerEmail?: string; customerName?: string; currency: string; amount: number; fee: number; net: number; paidAt: number; createdAt: number };
 type RevenueSummary = { setupRequired: boolean; totals: RevenueTotal[]; recent: RevenueEvent[]; betaInterestCount: number; accountCount: number };
+type OwnerAccount = { id: string; email: string; name: string; createdAt: number };
 type BetaSignup = { accountId: string; email: string; name: string; accountCreatedAt: number; plan: string; interval: string; discountCode?: string; createdAt: number; updatedAt: number };
+type NewsletterSubscriber = { accountId: string; email: string; name: string; status: string; source: string; createdAt?: number; updatedAt: number };
+type NewsletterRelease = { id: string; title: string; subject: string; summary?: string; status: string; objectKey: string; attachmentCount: number; size: number; createdAt: number; releasedAt?: number; recipientCount: number; deliveryStatus: string };
 type SpecialAccessCode = { hash: string; label: string; recipientEmail?: string; note?: string; createdAt: number; expiresAt?: number; maxUses: number; useCount: number; revokedAt?: number; lastRedeemedAt?: number; lastRedeemedByEmail?: string };
-type OwnerAccessSummary = { setupRequired: boolean; signups: BetaSignup[]; codes: SpecialAccessCode[] };
+type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[] };
+type OwnerNewsletterSummary = { setupRequired: boolean; subscribers: NewsletterSubscriber[]; releases: NewsletterRelease[] };
 const currencies = ["SGD", "USD", "EUR", "GBP", "AUD", "CAD", "MYR", "IDR", "JPY", "KRW", "CNY", "INR"];
 function formatMoney(currencyCode: string, cents: number) {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode, maximumFractionDigits: 2 }).format((cents || 0) / 100);
@@ -284,7 +290,9 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The special-access table is not active on this deployment yet. Publish the latest build or run the database migration.</p>}
     <div className="revenue-metrics">
+      <article><span>Accounts</span><strong>{summary?.accounts.length ?? "..."}</strong><small>All KinForge accounts in this cloud database</small></article>
       <article><span>Public signups</span><strong>{summary?.signups.length ?? "..."}</strong><small>KinForge accounts that registered beta interest</small></article>
+      <article><span>Subscribers</span><strong>{summary?.subscribers.length ?? "..."}</strong><small>Accounts included in owner newsletter releases</small></article>
       <article><span>Access codes</span><strong>{summary?.codes.length ?? "..."}</strong><small>Manual owner-created special access codes</small></article>
       <article><span>Redeemed</span><strong>{summary ? summary.codes.filter(code => code.useCount > 0).length : "..."}</strong><small>Codes already used by signed-in accounts</small></article>
     </div>
@@ -303,12 +311,114 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     </section>
     <section className="owner-access-columns">
       <div>
+        <h3><UsersRound size={17} />Accounts</h3>
+        <div className="revenue-list owner-access-list">{summary?.accounts.length ? summary.accounts.map(account => <div className="cloud-member" key={account.id}><span><strong>{account.name || account.email}</strong><small>{account.email} · joined {new Date(account.createdAt).toLocaleString()}</small></span></div>) : <p className="quiet">No accounts have signed up yet.</p>}</div>
+      </div>
+      <div>
+        <h3><Mail size={17} />Newsletter subscribers</h3>
+        <div className="revenue-list owner-access-list">{summary?.subscribers.length ? summary.subscribers.map(subscriber => <div className="cloud-member" key={subscriber.accountId}><span><strong>{subscriber.name || subscriber.email}</strong><small>{subscriber.email} · {subscriber.source} · {subscriber.status}</small></span></div>) : <p className="quiet">No newsletter subscribers yet.</p>}</div>
+      </div>
+      <div>
         <h3><UsersRound size={17} />Public signups</h3>
         <div className="revenue-list owner-access-list">{summary?.signups.length ? summary.signups.map(signup => <div className="cloud-member" key={signup.accountId}><span><strong>{signup.name || signup.email}</strong><small>{signup.email} · {signup.plan} · {new Date(signup.updatedAt).toLocaleString()}</small></span></div>) : <p className="quiet">No public beta signups yet.</p>}</div>
       </div>
       <div>
         <h3><ShieldCheck size={17} />Special access codes</h3>
         <div className="revenue-list owner-access-list">{summary?.codes.length ? summary.codes.map(code => <div className="cloud-member" key={code.hash}><span><strong>{code.label}{code.revokedAt ? " · revoked" : ""}</strong><small>{code.recipientEmail || "Any signed-in account"} · {code.useCount}/{code.maxUses} used{code.lastRedeemedByEmail ? ` · last ${code.lastRedeemedByEmail}` : ""}</small></span>{!code.revokedAt && <button className="button ghost" disabled={busy} onClick={() => void revoke(code.hash)}>Revoke</button>}</div>) : <p className="quiet">No special access codes yet.</p>}</div>
+      </div>
+    </section>
+    {message && <p role="status">{message}</p>}
+  </section></div>;
+}
+
+function fileToDataUrl(file: File) {
+  return new Promise<{ name: string; mime: string; dataUrl: string }>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error(`Could not read ${file.name}.`));
+    reader.onload = () => resolve({ name: file.name, mime: file.type || "application/octet-stream", dataUrl: String(reader.result || "") });
+    reader.readAsDataURL(file);
+  });
+}
+function formatBytes(size: number) {
+  if (!Number.isFinite(size) || size <= 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = size, index = 0;
+  while (value >= 1024 && index < units.length - 1) { value /= 1024; index += 1; }
+  return `${value.toFixed(value >= 10 || index === 0 ? 0 : 1)} ${units[index]}`;
+}
+function OwnerNewsletterDialog({ onClose }: { onClose: () => void }) {
+  const [summary, setSummary] = useState<OwnerNewsletterSummary | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState("");
+  const [attachments, setAttachments] = useState<{ name: string; mime: string; dataUrl: string }[]>([]);
+  const [form, setForm] = useState({
+    title: "KinForge Studio Update",
+    subject: "KinForge Genealogy Studio Supreme Suite update",
+    summary: "",
+    content: ""
+  });
+  async function refresh() {
+    setMessage("");
+    const data = await cloudRequest<OwnerNewsletterSummary>("/api/owner/newsletters");
+    setSummary(data);
+  }
+  useEffect(() => { void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not load newsletters.")); }, []);
+  async function addFiles(files: FileList | null) {
+    if (!files?.length) return;
+    setBusy(true); setMessage("");
+    try {
+      const next = await Promise.all(Array.from(files).map(fileToDataUrl));
+      setAttachments(previous => [...previous, ...next]);
+      setMessage(`${next.length} file${next.length === 1 ? "" : "s"} attached to this release.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not attach those files.");
+    } finally { setBusy(false); }
+  }
+  async function release() {
+    setBusy(true); setMessage("");
+    try {
+      const result = await cloudRequest<{ deliveryStatus: string; recipientCount: number; attachmentCount: number }>("/api/owner/newsletters", "POST", { ...form, attachments });
+      setForm(previous => ({ ...previous, summary: "", content: "" }));
+      setAttachments([]);
+      await refresh();
+      const delivered = result.deliveryStatus === "sent" || result.deliveryStatus === "sent-to-serene-relay";
+      setMessage(delivered
+        ? `Newsletter released to ${result.recipientCount} subscriber${result.recipientCount === 1 ? "" : "s"} with ${result.attachmentCount} attachment${result.attachmentCount === 1 ? "" : "s"}.`
+        : `Newsletter published for ${result.recipientCount} subscriber${result.recipientCount === 1 ? "" : "s"}. Email delivery needs a newsletter or Serene Relay endpoint before it can send automatically.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not release this newsletter.");
+    } finally { setBusy(false); }
+  }
+  return <div className="cloud-scrim"><section className="cloud-dialog wide owner-access" role="dialog" aria-modal="true" aria-labelledby="owner-newsletters-title">
+    <button className="cloud-close" aria-label="Close newsletters" onClick={onClose}><X size={20} /></button>
+    <h2 id="owner-newsletters-title">Owner newsletters</h2>
+    <p className="quiet">Create and release newsletters to signed-up KinForge accounts and subscribers. Attachments are stored in KinForge cloud storage with the release record.</p>
+    {summary?.setupRequired && <p className="auth-message bad" role="alert">The newsletter tables are not active on this deployment yet. Publish the latest cloud build or run the new database migration.</p>}
+    <div className="revenue-metrics">
+      <article><span>Subscribers</span><strong>{summary?.subscribers.length ?? "..."}</strong><small>Signed-up accounts included in releases</small></article>
+      <article><span>Released newsletters</span><strong>{summary?.releases.length ?? "..."}</strong><small>Stored in the owner newsletter archive</small></article>
+      <article><span>Latest delivery</span><strong>{summary?.releases[0]?.deliveryStatus || "..."}</strong><small>Uses newsletter email endpoint or Serene Relay when configured</small></article>
+    </div>
+    <section className="owner-revenue-entry" aria-labelledby="newsletter-composer-title">
+      <h3 id="newsletter-composer-title"><Mail size={17} />Release newsletter</h3>
+      <div className="revenue-form-grid">
+        <label className="field"><span>Title</span><input className="control" value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} /></label>
+        <label className="field"><span>Email subject</span><input className="control" value={form.subject} onChange={event => setForm({ ...form, subject: event.target.value })} /></label>
+        <label className="field"><span>Short summary</span><input className="control" value={form.summary} onChange={event => setForm({ ...form, summary: event.target.value })} /></label>
+        <label className="field"><span>Attachments</span><input className="control" type="file" multiple onChange={event => void addFiles(event.target.files)} /></label>
+      </div>
+      <label className="field"><span>Newsletter body</span><textarea className="control" rows={10} value={form.content} onChange={event => setForm({ ...form, content: event.target.value })} placeholder="Write the newsletter, update notes, release announcement, download links, or customer message here." /></label>
+      {!!attachments.length && <div className="revenue-list owner-access-list">{attachments.map((file, index) => <div className="cloud-member" key={`${file.name}-${index}`}><span><strong><FileText size={15} /> {file.name}</strong><small>{file.mime} · {formatBytes(file.dataUrl.length)}</small></span><button className="button ghost" disabled={busy} onClick={() => setAttachments(previous => previous.filter((_, itemIndex) => itemIndex !== index))}>Remove</button></div>)}</div>}
+      <div className="button-row"><button className="button" disabled={busy || !form.title.trim() || !form.subject.trim() || !form.content.trim()} onClick={() => void release()}><Send size={16} />{busy ? "Releasing..." : "Release to subscribers"}</button><button className="button secondary" disabled={busy} onClick={() => void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not refresh."))}><RefreshCw size={16} />Refresh</button></div>
+    </section>
+    <section className="owner-access-columns">
+      <div>
+        <h3><Mail size={17} />Subscribers</h3>
+        <div className="revenue-list owner-access-list">{summary?.subscribers.length ? summary.subscribers.map(subscriber => <div className="cloud-member" key={subscriber.accountId}><span><strong>{subscriber.name || subscriber.email}</strong><small>{subscriber.email} · {subscriber.source} · {subscriber.status}</small></span></div>) : <p className="quiet">No subscribers yet.</p>}</div>
+      </div>
+      <div>
+        <h3><FileText size={17} />Released archive</h3>
+        <div className="revenue-list owner-access-list">{summary?.releases.length ? summary.releases.map(release => <div className="cloud-member" key={release.id}><span><strong>{release.title}</strong><small>{release.recipientCount} recipients · {release.attachmentCount} attachments · {formatBytes(release.size)} · {release.deliveryStatus}</small></span></div>) : <p className="quiet">No newsletters have been released yet.</p>}</div>
       </div>
     </section>
     {message && <p role="status">{message}</p>}
