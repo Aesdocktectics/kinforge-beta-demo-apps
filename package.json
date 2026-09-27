@@ -67,8 +67,8 @@
     "@noble/hashes": "1.8.0"
   },
   "build": {
-    "appId": "studio.kinforge.genealogy",
-    "productName": "KinForge Genealogy Studio",
+    "appId": "studio.kinforge.genealogy.supreme",
+    "productName": "KinForge Genealogy Studio Supreme Suite",
     "directories": {
       "output": "release"
     },
@@ -107,7 +107,7 @@
       "artifactName": "${productName}-${version}-${arch}-portable.${ext}"
     },
     "dmg": {
-      "title": "KinForge Genealogy Studio"
+      "title": "KinForge Genealogy Studio Supreme Suite"
     }
   }
 }

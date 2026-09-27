@@ -52,7 +52,7 @@ ipcMain.handle("kinforge:cloud-request", async (event, input) => {
   }
   return { status: response.status, body: await response.text() };
 });
-const APP_FOLDER_NAME = "KinForge Genealogy Studio";
+const APP_FOLDER_NAME = "KinForge Genealogy Studio Supreme Suite";
 const EXPORT_FOLDERS = ["Reports", "Backups", "Websites", "Exports", "Media", "GEDCOM", "Charts"];
 const APP_INTERNAL_FOLDERS = ["Data", "Drafts", "Media", "Settings", "Logs"];
 
@@ -103,18 +103,18 @@ function ensureKinForgeFolders() {
   for (const folder of Object.values(folders)) fs.mkdirSync(folder, { recursive: true });
   for (const folder of Object.values(appFolders)) fs.mkdirSync(folder, { recursive: true });
   writeReadme(path.join(downloadsRoot, "README.txt"), [
-    "KinForge Genealogy Studio export folder",
+    "KinForge Genealogy Studio Supreme Suite export folder",
     "Copyright 2026 Dreams of Serene Landscapes. All rights reserved.",
     "",
-    "The Mac app stores generated reports, backups, websites, GEDCOM files, charts, and media exports in the subfolders here.",
+    "The owner Mac app stores generated reports, backups, websites, GEDCOM files, charts, and media exports in the subfolders here.",
     "Files are written locally. Signed-in owners also save exports to their KinForge cloud library and any connected Google Drive or OneDrive."
   ].join("\n"));
   writeReadme(path.join(appRoot, "README.txt"), [
-    "KinForge Genealogy Studio app folder",
+    "KinForge Genealogy Studio Supreme Suite app folder",
     "Copyright 2026 Dreams of Serene Landscapes. All rights reserved.",
     "",
     "This folder is used by the native app for local app data, drafts, settings, media support files, and logs.",
-    "Use the Downloads/KinForge Genealogy Studio folder for files you want to share."
+    "Use the Downloads/KinForge Genealogy Studio Supreme Suite folder for owner-suite files you want to share."
   ].join("\n"));
   return { appRoot, downloadsRoot, updatesRoot, folders, appFolders };
 }
@@ -198,7 +198,7 @@ function createWindow() {
     height: 980,
     minWidth: 1040,
     minHeight: 720,
-    title: "KinForge Genealogy Studio",
+    title: "KinForge Genealogy Studio Supreme Suite",
     backgroundColor: "#f7f4ed",
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
