@@ -10,7 +10,7 @@ type Env = DriveEnv & ReleaseEnv & {
   ASSETS: Fetcher;
   EMAIL_CODE_ENDPOINT?: string; EMAIL_CODE_TOKEN?: string; EMAIL_CODE_FROM?: string;
   SERENE_RELAY_SUPPORT_ENDPOINT?: string; SERENE_RELAY_SUPPORT_TOKEN?: string; SERENE_RELAY_SUPPORT_TO?: string; SERENE_RELAY_SUPPORT_FROM?: string;
-  KINFORGE_OWNER_EMAILS?: string; OWNER_EMAILS?: string; STRIPE_WEBHOOK_SECRET?: string;
+  KINFORGE_OWNER_EMAILS?: string; KINFORGE_ADMIN_EMAILS?: string; OWNER_EMAILS?: string; STRIPE_WEBHOOK_SECRET?: string;
 };
 type Account = { id: string; email: string; name: string; password: string; recovery_hash: string };
 type Library = { id: string; owner_id: string; name: string; revision: number; object_key: string | null; updated_at: number; role: string };
@@ -69,7 +69,7 @@ async function sessionToken(env: Env, userId: string) {
   return token;
 }
 function ownerEmails(env: Env) {
-  return String(env.KINFORGE_OWNER_EMAILS || env.OWNER_EMAILS || "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
+  return String(env.KINFORGE_OWNER_EMAILS || env.KINFORGE_ADMIN_EMAILS || env.OWNER_EMAILS || "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
 }
 function isOwnerAccount(env: Env, user: Account) {
   const owners = ownerEmails(env);
