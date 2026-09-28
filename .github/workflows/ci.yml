@@ -28,6 +28,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - run: node --test tests/security-headers.test.mjs
       - run: npm run build
       - run: npm run test:cloud
       - run: node --test tests/releases.test.mjs tests/native-startup.test.mjs tests/github-release.test.mjs

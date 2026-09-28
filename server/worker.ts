@@ -19,12 +19,19 @@ type Library = { id: string; owner_id: string; name: string; revision: number; o
 type AuthCodePurpose = "reset" | "login";
 const cookieName = "kinforge_session";
 const day = 86400000;
+const securityHeaders = {
+  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
+  "X-Frame-Options": "DENY",
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "strict-origin-when-cross-origin",
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-origin",
+  "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(self)"
+};
 const json = (value: unknown, status = 200, headers: HeadersInit = {}) => Response.json(value, {
   status, headers: {
     "Cache-Control": "private, no-store",
-    "X-Content-Type-Options": "nosniff",
-    "Cross-Origin-Resource-Policy": "same-origin",
-    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(self)",
+    ...securityHeaders,
     ...headers
   }
 });
