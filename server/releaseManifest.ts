@@ -1,54 +1,54 @@
 // Generated from verified installer files.
 export const release = {
-  "version": "1.5.2",
+  "version": "1.5.3",
   "files": [
     {
       "id": "apple-silicon-dmg",
       "platform": "Apple Silicon",
       "format": "dmg",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-arm64.dmg",
-      "size": 124549005,
-      "sha256": "1d965c84f25bd30fe36b3ba97b8e963637ca1fec6178cb36ae1104d73b6371c7"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-arm64.dmg",
+      "size": 124549024,
+      "sha256": "82246cbf63ea88f19f0040dddeb7f9d6ac6ef4da24c779cab635ff9956579256"
     },
     {
       "id": "apple-silicon-zip",
       "platform": "Apple Silicon",
       "format": "zip",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-arm64.zip",
-      "size": 123418329,
-      "sha256": "f7ba3d2bdf15d573a6d6e58b846b7e94287bcc98f3cf05e8bb6105800b8d48a2"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-arm64.zip",
+      "size": 123418522,
+      "sha256": "0c02f26d0c4782c6b4840dcb719932eeb4efc58bd7db3ceea2138c73614130f3"
     },
     {
       "id": "intel-dmg",
       "platform": "Intel",
       "format": "dmg",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-x64.dmg",
-      "size": 129133272,
-      "sha256": "0e856d20c855b80d20359fe6015da68045d2a84a0ccbe5e274d2e2cf309d3c55"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-x64.dmg",
+      "size": 129133270,
+      "sha256": "0a487b2be7b919bdcd3cca147aaf9bc1284fe6ea9ce2fd524d6b46f67c4ef1bb"
     },
     {
       "id": "intel-zip",
       "platform": "Intel",
       "format": "zip",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-x64.zip",
-      "size": 128060828,
-      "sha256": "a570b60799f4927dd432918e34346503aa39bf5aa0eb00061e997f9ca6bc396a"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-x64.zip",
+      "size": 128061021,
+      "sha256": "44d080621cf490c3d8cec9032a3bc13e0645ec4f397be27c6003bf9feddac4ce"
     },
     {
       "id": "x64-setup-exe",
       "platform": "Windows",
       "format": "setup.exe",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-x64-setup.exe",
-      "size": 101427056,
-      "sha256": "af097d5d7b009a9457c60c7e6e15f35407b5b6f2b2df4d2fbfa9b3a43cc5d3c2"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-x64-setup.exe",
+      "size": 101427043,
+      "sha256": "51359a16641a22db0b4b7ccbb243f042070b994de45a6b0eaa3fbf5ded112e9b"
     },
     {
       "id": "x64-portable-exe",
       "platform": "Windows",
       "format": "portable.exe",
-      "name": "KinForge Genealogy Studio Supreme Suite-1.5.2-x64-portable.exe",
-      "size": 101170842,
-      "sha256": "74ca9586d516745b99f85601f584f6821db05f530e6c2cd587f3c117050eb684"
+      "name": "KinForge Genealogy Studio Supreme Suite-1.5.3-x64-portable.exe",
+      "size": 101170903,
+      "sha256": "ecb5474222d3ccb4c1c8fcbbe7917bf8998a90379b512d9a8ac4c21125c9ee06"
     }
   ]
 } as const;
