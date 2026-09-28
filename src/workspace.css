@@ -23,6 +23,12 @@ h1, h2, h3, p { overflow-wrap: anywhere; }
 .sidebar nav a { display: flex; align-items: center; gap: 10px; min-height: 39px; padding: 9px 11px; color: #5f6d72; font-size: 13px; text-decoration: none; border-radius: 5px; }
 .sidebar nav a.active { background: #e6f1f0; color: #215c63; font-weight: 650; }
 .sidebar nav a:hover { background: #f0f5f5; }
+.owner-nav-section { border-top: 1px solid var(--line); margin-top: 8px; padding-top: 9px; display: grid; gap: 3px; }
+.owner-nav-heading { padding: 3px 11px 4px; color: #9f6f7d; font-size: 10px; font-weight: 750; text-transform: uppercase; }
+.owner-nav-link { width: 100%; border: 0; background: transparent; display: flex; align-items: center; gap: 10px; min-height: 38px; padding: 9px 11px; color: #5f6d72; font: inherit; font-size: 13px; text-align: left; border-radius: 5px; }
+.owner-nav-link:hover:not(:disabled) { background: #fff4f7; color: #8b5965; }
+.owner-nav-link:disabled { opacity: .45; }
+.owner-nav-primary { color: #8b5965; font-weight: 700; }
 .product-line { margin-top: auto; padding: 12px 6px 0; color: #7b878b; border: 0; border-top: 1px solid var(--line); border-radius: 0; font-size: 10px; line-height: 1.6; }
 .main { padding: 0 26px 26px; }
 .topbar { min-height: 86px; margin: 0; padding: 15px 0; border-bottom: 1px solid var(--line); }

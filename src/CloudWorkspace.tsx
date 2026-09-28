@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText, ClipboardList, Globe2, ExternalLink } from "lucide-react";
+import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText, ClipboardList, Globe2, ExternalLink, Crown } from "lucide-react";
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
@@ -34,11 +34,13 @@ export default function CloudWorkspace() {
   const [newsletterOpen, setNewsletterOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
   const [websiteOpen, setWebsiteOpen] = useState(false);
+  const [ownerConsoleOpen, setOwnerConsoleOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [choices, setChoices] = useState<ConflictChoices>({});
   const sync = useRef<CloudSync | null>(null);
   const [retry, setRetry] = useState(0);
   const library = libraries.find(item => item.id === libraryId);
+  const ownerSurface = typeof window !== "undefined" && /kinforge-genealogy-studio\.marianneleong3\.chatgpt\.site|localhost|127\.0\.0\.1/.test(window.location.hostname);
   useEffect(() => {
     const key = "kinforge-cache-housekeeping-v1";
     const run = () => {
@@ -112,21 +114,31 @@ export default function CloudWorkspace() {
   async function signOut() {
     try {
       await cloudRequest("/api/auth/logout", "POST", {});
-      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setSupportOpen(false); setWebsiteOpen(false); setError("");
+      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setSupportOpen(false); setWebsiteOpen(false); setOwnerConsoleOpen(false); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Reconnect before signing out."); }
   }
   if (demo) return <App cloud={{ state: demo, account: { id: "demo", name: "Guest demo", email: "" }, onChange: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, onSave: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, toolbar: <span className="cloud-status">Demo - saved on this device</span>, onSignOut: () => { setDemo(null); sessionStorage.removeItem("kinforge-demo-session"); }, readOnly: false, saved: true, demo: true, canManagePrivacy: true }} />;
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
+  const ownerNavigation = (user.ownerDashboard || ownerSurface) ? <div className="owner-nav-section" aria-label="Owner tools">
+    <span className="owner-nav-heading">Owner tools</span>
+    <button type="button" className="owner-nav-link owner-nav-primary" onClick={() => setOwnerConsoleOpen(true)}><Crown size={16} /><span>Owner Console</span></button>
+    <button type="button" className="owner-nav-link" disabled={!user.ownerDashboard} onClick={() => setRevenueOpen(true)} title={user.ownerDashboard ? "Open payments and revenue" : "Owner email access is required"}><BadgeDollarSign size={16} /><span>Payments & revenue</span></button>
+    <button type="button" className="owner-nav-link" disabled={!user.ownerDashboard} onClick={() => setSupportOpen(true)} title={user.ownerDashboard ? "Open feedback, requests and support tickets" : "Owner email access is required"}><ClipboardList size={16} /><span>Feedback & support</span></button>
+    <button type="button" className="owner-nav-link" disabled={!user.ownerDashboard} onClick={() => setWebsiteOpen(true)} title={user.ownerDashboard ? "Open website controls" : "Owner email access is required"}><Globe2 size={16} /><span>Web control</span></button>
+    <button type="button" className="owner-nav-link" disabled={!user.ownerDashboard} onClick={() => setAccessOpen(true)} title={user.ownerDashboard ? "Open accounts and Special Access codes" : "Owner email access is required"}><KeyRound size={16} /><span>Accounts & access</span></button>
+    <button type="button" className="owner-nav-link" disabled={!user.ownerDashboard} onClick={() => setNewsletterOpen(true)} title={user.ownerDashboard ? "Open newsletters" : "Owner email access is required"}><Mail size={16} /><span>Newsletters</span></button>
+  </div> : null;
   const toolbar = <div className="cloud-toolbar"><button className={`cloud-status ${view?.error ? "cloud-warning" : ""}`} onClick={() => void sync.current?.sync()} title={view?.lastSaved ? `Last saved ${new Date(view.lastSaved).toLocaleString()}` : "Sync now"} aria-label={`Cloud sync: ${view?.status || "Connecting"}`}>
-    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Payments</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Accounts & access</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setSupportOpen(true)}><ClipboardList size={16} />Support tickets</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setWebsiteOpen(true)}><Globe2 size={16} />Websites</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
+    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{(user.ownerDashboard || ownerSurface) && <button className="button owner-console-button" onClick={() => setOwnerConsoleOpen(true)}><Crown size={16} />Owner Console</button>}{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
   return <>
-    {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
+    {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, ownerMenu: ownerNavigation, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
     {view?.preview && <div className="cloud-notice" role="status">Opening the full saved library. Editing and downloads will be available when it is ready.</div>}
     {(error || view?.error) && <div className="cloud-notice" role="alert"><span>{error || view?.error}</span><button onClick={() => error || !view || view.locked ? setRetry(n => n + 1) : void sync.current?.sync()}>Retry</button></div>}
     {recovery && <RecoveryDialog email={user.email} code={recovery} onSaved={() => setRecovery("")} />}
     {sharing && library && <SharingDialog user={user} libraries={libraries} selected={library} onClose={() => setSharing(false)} onSelect={id => { setLibraryId(id); setSharing(false); }} onJoined={async id => { await refreshLibraries(id); setSharing(false); }} />}
     {drivesOpen && library?.role === "owner" && <CloudDrives library={library} onClose={() => setDrivesOpen(false)} />}
+    {ownerConsoleOpen && <OwnerConsoleDialog user={user} ownerSurface={ownerSurface} onClose={() => setOwnerConsoleOpen(false)} onOpenRevenue={() => { setOwnerConsoleOpen(false); setRevenueOpen(true); }} onOpenAccess={() => { setOwnerConsoleOpen(false); setAccessOpen(true); }} onOpenNewsletter={() => { setOwnerConsoleOpen(false); setNewsletterOpen(true); }} onOpenSupport={() => { setOwnerConsoleOpen(false); setSupportOpen(true); }} onOpenWebsite={() => { setOwnerConsoleOpen(false); setWebsiteOpen(true); }} />}
     {revenueOpen && user.ownerDashboard && <OwnerRevenueDialog onClose={() => setRevenueOpen(false)} />}
     {accessOpen && user.ownerDashboard && <OwnerAccessDialog onClose={() => setAccessOpen(false)} />}
     {newsletterOpen && user.ownerDashboard && <OwnerNewsletterDialog onClose={() => setNewsletterOpen(false)} />}
@@ -204,6 +216,38 @@ const ticketStatuses = ["open", "in-progress", "waiting-customer", "resolved", "
 const ticketPriorities = ["low", "normal", "high", "urgent"];
 function formatMoney(currencyCode: string, cents: number) {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode, maximumFractionDigits: 2 }).format((cents || 0) / 100);
+}
+function OwnerConsoleDialog({ user, ownerSurface, onClose, onOpenRevenue, onOpenAccess, onOpenNewsletter, onOpenSupport, onOpenWebsite }: { user: CloudUser; ownerSurface: boolean; onClose: () => void; onOpenRevenue: () => void; onOpenAccess: () => void; onOpenNewsletter: () => void; onOpenSupport: () => void; onOpenWebsite: () => void }) {
+  const ownerReady = !!user.ownerDashboard;
+  const tools = [
+    { title: "Payments in and out", detail: "See Stripe payment events, paid beta income, subscription entries, manual payments, refunds and adjustments.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue },
+    { title: "Revenue dashboard", detail: "Review gross, fees, net earnings, currency totals, account counts and recent payment history.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue },
+    { title: "Feedback and support tickets", detail: "Open, prioritise, reply to, resolve and close app feedback, support forms, quote requests, discount requests and customer enquiries.", icon: <ClipboardList size={18} />, action: onOpenSupport },
+    { title: "Website control", detail: "Review public, owner and Special Access websites, draft website update briefs, and keep downloads/pages aligned.", icon: <Globe2 size={18} />, action: onOpenWebsite },
+    { title: "Accounts and Special Access", detail: "See signups, subscribers, beta interest, redeemed codes, and manually create or revoke Special Access codes.", icon: <KeyRound size={18} />, action: onOpenAccess },
+    { title: "Newsletters", detail: "Release newsletters to subscribers, attach files, and keep a record of released messages.", icon: <Mail size={18} />, action: onOpenNewsletter }
+  ];
+  return <div className="cloud-scrim"><section className="cloud-dialog wide owner-console" role="dialog" aria-modal="true" aria-labelledby="owner-console-title">
+    <button className="cloud-close" aria-label="Close owner console" onClick={onClose}><X size={20} /></button>
+    <p className="eyebrow">Owner site</p>
+    <h2 id="owner-console-title"><Crown size={22} />KinForge Owner Console</h2>
+    <p className="quiet">This is the private business-control area for the owner site: payments, revenue, user feedback, support requests, website control, special access, accounts and newsletters.</p>
+    {!ownerReady && <div className="auth-message bad" role="alert">
+      <strong>Owner permissions are not active for this signed-in account.</strong>
+      <span> You are on {ownerSurface ? "the owner site" : "a non-owner surface"}, but the cloud account did not return owner-dashboard access. Sign in with the owner email configured in <code>KINFORGE_OWNER_EMAILS</code>, <code>KINFORGE_ADMIN_EMAILS</code>, or <code>OWNER_EMAILS</code> so the private tools can load.</span>
+    </div>}
+    <div className="owner-console-grid">
+      {tools.map(tool => <button key={tool.title} className="owner-console-card" type="button" disabled={!ownerReady} onClick={tool.action}>
+        <span className="owner-console-icon">{tool.icon}</span>
+        <strong>{tool.title}</strong>
+        <small>{tool.detail}</small>
+      </button>)}
+    </div>
+    <section className="owner-special-sync" aria-labelledby="owner-console-note">
+      <h3 id="owner-console-note"><ShieldCheck size={17} />What should appear here</h3>
+      <p>When the owner account is active, this console opens the payment ledger, revenue totals, customer feedback, support ticket forum, public/Special Access website control, special access code creator, subscriber list and newsletter release tools.</p>
+    </section>
+  </section></div>;
 }
 function OwnerRevenueDialog({ onClose }: { onClose: () => void }) {
   const [summary, setSummary] = useState<RevenueSummary | null>(null);
@@ -516,8 +560,8 @@ function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
   }
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-support" role="dialog" aria-modal="true" aria-labelledby="owner-support-title">
     <button className="cloud-close" aria-label="Close support tickets" onClick={onClose}><X size={20} /></button>
-    <h2 id="owner-support-title">Owner support tickets</h2>
-    <p className="quiet">Private owner helpdesk. Public support, Stripe quote requests, discount requests, subsidised pricing requests, accessibility-discount requests and KinForge Support enquiries are saved here, can be answered from KinForge, and can be opened, prioritised, resolved or closed.</p>
+    <h2 id="owner-support-title">Owner feedback and support tickets</h2>
+    <p className="quiet">Private owner helpdesk. App feedback, public support, Stripe quote requests, discount requests, subsidised pricing requests, accessibility-discount requests and KinForge Support enquiries are saved here, can be answered from KinForge, and can be opened, prioritised, resolved or closed.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The support ticket tables are not active on this deployment yet. Publish the latest cloud build or run the new database migration.</p>}
     <div className="revenue-metrics">
       <article><span>Open</span><strong>{counts.open || 0}</strong><small>New tickets needing action</small></article>

@@ -522,7 +522,7 @@ function loadState(): AppState {
   return createSeedState();
 }
 
-type CloudApp = { state: AppState; account: { id: string; name: string; email: string }; onChange: (state: AppState) => void; onSave: (state: AppState) => void | Promise<void>; toolbar: ReactNode; onSignOut: () => void; readOnly: boolean; saved: boolean; demo: boolean; canManagePrivacy: boolean };
+type CloudApp = { state: AppState; account: { id: string; name: string; email: string }; onChange: (state: AppState) => void; onSave: (state: AppState) => void | Promise<void>; toolbar: ReactNode; ownerMenu?: ReactNode; onSignOut: () => void; readOnly: boolean; saved: boolean; demo: boolean; canManagePrivacy: boolean };
 function App({ cloud }: { cloud?: CloudApp }) {
   const [history, setHistory] = useState<{ present: AppState; past: AppState[]; future: AppState[] }>(() => ({ present: cloud ? cloud.state : loadState(), past: [], future: [] }));
   const lastIncoming = useRef(cloud?.state);
@@ -3335,7 +3335,7 @@ Quality checklist:
           <div className="settings-grid">
             <label className="field"><span>Your name</span><input className="control" value={supportForm.name} onChange={event => setSupportForm(current => ({ ...current, name: event.target.value }))} /></label>
             <label className="field"><span>Email for replies</span><input className="control" type="email" value={supportForm.email} onChange={event => setSupportForm(current => ({ ...current, email: event.target.value }))} /></label>
-            <label className="field"><span>Request type</span><select className="control" value={supportForm.type} onChange={event => setSupportForm(current => ({ ...current, type: event.target.value }))}><option>Support request</option><option>Copyright-free permission request</option><option>Bug report</option><option>Feature request</option><option>Account or login help</option><option>Sync issue</option><option>Download question</option><option>Accessibility request</option></select></label>
+            <label className="field"><span>Request type</span><select className="control" value={supportForm.type} onChange={event => setSupportForm(current => ({ ...current, type: event.target.value }))}><option>Support request</option><option>App feedback</option><option>Customer review</option><option>Copyright-free permission request</option><option>Bug report</option><option>Feature request</option><option>Account or login help</option><option>Sync issue</option><option>Download question</option><option>Accessibility request</option></select></label>
             <label className="field"><span>Device/app version</span><input className="control" value={supportForm.device} placeholder="Example: Mac app 1.3.8 on Apple Silicon" onChange={event => setSupportForm(current => ({ ...current, device: event.target.value }))} /></label>
           </div>
           <label className="field"><span>Subject</span><input className="control" value={supportForm.subject} onChange={event => setSupportForm(current => ({ ...current, subject: event.target.value }))} /></label>
@@ -4217,6 +4217,7 @@ Important limitation:
               <span>{translate(item.label)}</span>
             </Link>
           ))}
+          {cloud?.ownerMenu}
         </nav>
         <div className="product-line">Product of Dreams of Serene Landscapes<br /><span>{COPYRIGHT_NOTICE}</span></div>
       </aside>

@@ -1,5 +1,15 @@
 .cloud-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .owner-tool-button { border-color: #d7c0c7; background: #fff8fb; color: #694457; }
+.owner-console-button { border-color: #b98993; background: linear-gradient(135deg, #9f6f7d, #c59aa5); color: #fff; box-shadow: 0 8px 18px #9f6f7d26; }
+.owner-console-button:hover { background: linear-gradient(135deg, #8b5965, #b98993); }
+.owner-console h2 { display: flex; align-items: center; gap: 10px; }
+.owner-console-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.owner-console-card { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; align-items: start; min-height: 118px; padding: 14px; border: 1px solid #ead4dd; border-radius: 8px; background: #fffafb; color: #354548; text-align: left; }
+.owner-console-card:hover:not(:disabled) { border-color: #c99cab; background: #fff5f8; box-shadow: 0 8px 22px #9f6f7d18; }
+.owner-console-card:disabled { opacity: .55; cursor: not-allowed; }
+.owner-console-icon { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; background: #f1e1e7; color: #7d4d61; grid-row: span 2; }
+.owner-console-card strong { font-size: 15px; }
+.owner-console-card small { color: #66787b; line-height: 1.35; }
 .drive-dialog { box-sizing: border-box; }
 .drive-provider { padding: 16px 0; border-block-end: 1px solid #dfe5e5; }
 .drive-heading { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
@@ -94,4 +104,4 @@
   .topbar-controls .control { min-width: 140px; }
   .topbar-controls .button { white-space: nowrap; }
 }
-@media (max-width: 760px) { .cloud-notice { left: 12px; right: 12px; bottom: 12px; } .cloud-dialog { padding: 20px; } .sync-conflict, .update-summary, .owner-support-layout, .support-message dl { grid-template-columns: 1fr; } .cloud-toolbar { width: 100%; } .update-file { align-items: stretch; flex-direction: column; } .update-file .button, .beta-preview-controls .button, .beta-toggle { justify-content: center; width: 100%; } .owner-ticket-list { max-height: 260px; } }
+@media (max-width: 760px) { .cloud-notice { left: 12px; right: 12px; bottom: 12px; } .cloud-dialog { padding: 20px; } .sync-conflict, .update-summary, .owner-support-layout, .support-message dl, .owner-console-grid { grid-template-columns: 1fr; } .cloud-toolbar { width: 100%; } .update-file { align-items: stretch; flex-direction: column; } .update-file .button, .beta-preview-controls .button, .beta-toggle { justify-content: center; width: 100%; } .owner-ticket-list { max-height: 260px; } }
