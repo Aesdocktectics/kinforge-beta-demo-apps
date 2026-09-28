@@ -84,13 +84,23 @@ async function sessionToken(env: Env, userId: string) {
   return token;
 }
 function ownerEmails(env: Env) {
-  return String(env.KINFORGE_OWNER_EMAILS || env.KINFORGE_ADMIN_EMAILS || env.OWNER_EMAILS || "").split(",").map(email => email.trim().toLowerCase()).filter(Boolean);
+  return [env.KINFORGE_OWNER_EMAILS, env.KINFORGE_ADMIN_EMAILS, env.OWNER_EMAILS]
+    .flatMap(value => String(value || "").split(","))
+    .map(email => email.trim().toLowerCase())
+    .filter(Boolean);
 }
-function isOwnerAccount(env: Env, user: Account) {
+async function isOwnerAccount(env: Env, user: Account) {
   const owners = ownerEmails(env);
-  return owners.length > 0 && owners.includes(user.email.toLowerCase());
+  if (owners.length > 0 && owners.includes(user.email.toLowerCase())) return true;
+  try {
+    const managed = await env.DB.prepare("SELECT email FROM owner_emails WHERE lower(email)=? AND revoked_at IS NULL LIMIT 1").bind(user.email.toLowerCase()).first<{ email: string }>();
+    return !!managed;
+  } catch (error) {
+    if (tableMissing(error)) return false;
+    throw error;
+  }
 }
-const publicAccount = (user: Account, env: Env) => ({ id: user.id, email: user.email, name: user.name, ownerDashboard: isOwnerAccount(env, user) });
+const publicAccount = async (user: Account, env: Env) => ({ id: user.id, email: user.email, name: user.name, ownerDashboard: await isOwnerAccount(env, user) });
 function authCodePurpose(value: unknown): AuthCodePurpose {
   if (value === "reset" || value === "login") return value;
   throw new Problem(400, "Choose password reset or email-code login.");
@@ -298,11 +308,11 @@ async function createStripeQuoteOrDiscountRequest(env: Env, request: Request, us
     message: "Your request was saved for KinForge Support."
   }, stripeCustomerId ? 201 : 202);
 }
-function ownerOnly(env: Env, user: Account) {
-  if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
+async function ownerOnly(env: Env, user: Account) {
+  if (!await isOwnerAccount(env, user)) throw new Problem(403, "This owner area is private.");
 }
 function tableMissing(error: unknown) {
-  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies/i.test(error.message);
+  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies|owner_emails/i.test(error.message);
 }
 async function ownerRevenue(env: Env) {
   try {
@@ -318,19 +328,49 @@ async function ownerRevenue(env: Env) {
     throw error;
   }
 }
+async function ownerEmailSummary(env: Env) {
+  const envEmails = [
+    ...String(env.KINFORGE_OWNER_EMAILS || "").split(",").map(email => ({ email: email.trim().toLowerCase(), role: "owner", source: "KINFORGE_OWNER_EMAILS" })),
+    ...String(env.KINFORGE_ADMIN_EMAILS || "").split(",").map(email => ({ email: email.trim().toLowerCase(), role: "admin", source: "KINFORGE_ADMIN_EMAILS" })),
+    ...String(env.OWNER_EMAILS || "").split(",").map(email => ({ email: email.trim().toLowerCase(), role: "owner", source: "OWNER_EMAILS" }))
+  ].filter(item => item.email);
+  try {
+    const managed = await env.DB.prepare("SELECT email,role,created_by AS createdBy,created_at AS createdAt,revoked_at AS revokedAt FROM owner_emails ORDER BY revoked_at IS NOT NULL, created_at DESC LIMIT 500").all();
+    return { envEmails, managedEmails: managed.results };
+  } catch (error) {
+    if (tableMissing(error)) return { envEmails, managedEmails: [], setupRequired: true };
+    throw error;
+  }
+}
 async function ownerAccessSummary(env: Env) {
   try {
-    const [accounts, signups, subscribers, codes] = await Promise.all([
+    const [accounts, signups, subscribers, codes, ownerEmails] = await Promise.all([
       env.DB.prepare("SELECT a.id,a.email,a.name,a.created_at AS createdAt FROM accounts a ORDER BY a.created_at DESC LIMIT 500").all(),
       env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,a.created_at AS accountCreatedAt,b.plan,b.interval,b.discount_code AS discountCode,b.created_at AS createdAt,b.updated_at AS updatedAt FROM beta_interests b JOIN accounts a ON a.id=b.account_id ORDER BY b.updated_at DESC LIMIT 250").all(),
       env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,COALESCE(s.status,'subscribed') AS status,COALESCE(s.source,CASE WHEN b.account_id IS NOT NULL THEN 'beta-interest' ELSE 'account' END) AS source,COALESCE(s.created_at,a.created_at) AS createdAt,COALESCE(s.updated_at,a.created_at) AS updatedAt FROM accounts a LEFT JOIN beta_interests b ON b.account_id=a.id LEFT JOIN newsletter_subscribers s ON s.account_id=a.id WHERE COALESCE(s.status,'subscribed')='subscribed' ORDER BY COALESCE(s.updated_at,a.created_at) DESC LIMIT 500").all(),
-      env.DB.prepare("SELECT c.hash,c.label,c.recipient_email AS recipientEmail,c.note,c.created_at AS createdAt,c.expires_at AS expiresAt,c.max_uses AS maxUses,c.use_count AS useCount,c.revoked_at AS revokedAt,c.last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all()
+      env.DB.prepare("SELECT c.hash,c.label,c.recipient_email AS recipientEmail,c.note,c.created_at AS createdAt,c.expires_at AS expiresAt,c.max_uses AS maxUses,c.use_count AS useCount,c.revoked_at AS revokedAt,c.last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all(),
+      ownerEmailSummary(env)
     ]);
-    return json({ setupRequired: false, accounts: accounts.results, signups: signups.results, subscribers: subscribers.results, codes: codes.results });
+    return json({ setupRequired: !!ownerEmails.setupRequired, accounts: accounts.results, signups: signups.results, subscribers: subscribers.results, codes: codes.results, ownerEmails });
   } catch (error) {
-    if (tableMissing(error)) return json({ setupRequired: true, accounts: [], signups: [], subscribers: [], codes: [] });
+    if (tableMissing(error)) return json({ setupRequired: true, accounts: [], signups: [], subscribers: [], codes: [], ownerEmails: { envEmails: [], managedEmails: [], setupRequired: true } });
     throw error;
   }
+}
+async function addOwnerEmail(env: Env, request: Request, user: Account) {
+  const data = await body(request, 8192);
+  const email = emailAddress(data.email);
+  const role = data.role === "admin" ? "admin" : "owner";
+  await env.DB.prepare("INSERT INTO owner_emails (email,role,created_by,created_at,revoked_at) VALUES (?,?,?,?,NULL) ON CONFLICT(email) DO UPDATE SET role=excluded.role,created_by=excluded.created_by,created_at=excluded.created_at,revoked_at=NULL")
+    .bind(email, role, user.id, Date.now()).run();
+  return json({ ok: true, email, role }, 201);
+}
+async function revokeOwnerEmail(env: Env, request: Request, user: Account) {
+  const data = await body(request, 8192);
+  const email = emailAddress(data.email);
+  if (email === user.email.toLowerCase() && ownerEmails(env).includes(email)) throw new Problem(400, "This bootstrap owner email comes from the deployment environment and cannot be revoked inside the app.");
+  await env.DB.prepare("UPDATE owner_emails SET revoked_at=? WHERE lower(email)=?").bind(Date.now(), email).run();
+  return json({ ok: true, email });
 }
 async function ownerNewsletterSummary(env: Env) {
   try {
@@ -588,7 +628,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
   if (method !== "GET" && method !== "HEAD") {
     if (request.headers.get("X-KinForge-Client") !== "1" || (request.headers.get("origin") && request.headers.get("origin") !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Problem(403, "This request must come from KinForge.");
   }
-  if (path === "/api/health") return json({ ok: true, version: "1.5.0" });
+  if (path === "/api/health") return json({ ok: true, version: "1.5.7" });
   if (path === "/api/support" && method === "POST") {
     const data = await body(request, 32768);
     await rateLimit(env, request, "support", 8, 60 * 60000, String(data.email || ""));
@@ -636,7 +676,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
       env.DB.prepare("INSERT INTO newsletter_subscribers (account_id,email,name,status,source,created_at,updated_at) VALUES (?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET email=excluded.email,name=excluded.name,status='subscribed',updated_at=excluded.updated_at").bind(id, email, String(data.name || email.split("@")[0]).trim().slice(0, 100), "subscribed", "account", Date.now(), Date.now())
     ]);
     const user = await env.DB.prepare("SELECT * FROM accounts WHERE id=?").bind(id).first<Account>();
-    return json({ user: publicAccount(user!, env), recoveryCode }, 201, { "Set-Cookie": cookie(await sessionToken(env, id), request) });
+    return json({ user: await publicAccount(user!, env), recoveryCode }, 201, { "Set-Cookie": cookie(await sessionToken(env, id), request) });
   }
   if (path === "/api/auth/login" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email);
@@ -645,7 +685,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     const password = typeof data.password === "string" ? data.password.slice(0, 256) : "";
     const encoded = user?.password || `scrypt-v1:${"0".repeat(64)}:${"0".repeat(64)}`;
     if (!await verifyPassword(password, encoded) || !user) throw new Problem(401, "The email or password did not match.");
-    return json({ user: publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: await publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   if (path === "/api/auth/code/request" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email); const purpose = authCodePurpose(data.purpose);
@@ -664,9 +704,9 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
         env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id),
         env.DB.prepare("UPDATE auth_codes SET used_at=? WHERE account_id=? AND used_at IS NULL").bind(Date.now(), user.id)
       ]);
-      return json({ user: publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+      return json({ user: await publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
     }
-    return json({ user: publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: await publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   if (path === "/api/auth/recover" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email); const password = validPassword(data.password);
@@ -678,10 +718,10 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
       env.DB.prepare("UPDATE accounts SET password=?,recovery_hash=? WHERE id=?").bind(nextHash, await digest(recoveryCode), user.id),
       env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(user.id)
     ]);
-    return json({ user: publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
+    return json({ user: await publicAccount(user, env), recoveryCode }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   const user = await currentAccount(env, request);
-  if (path === "/api/auth/me" && method === "GET") return json({ user: publicAccount(user, env) });
+  if (path === "/api/auth/me" && method === "GET") return json({ user: await publicAccount(user, env) });
   if (path === "/api/auth/logout" && method === "POST") {
     await env.DB.prepare("DELETE FROM sessions WHERE hash=?").bind(await digest(requestToken(request))).run();
     return json({ ok: true }, 200, { "Set-Cookie": cookie("", request, 0) });
@@ -699,51 +739,61 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     return createStripeQuoteOrDiscountRequest(env, request, user);
   }
   if (path === "/api/owner/revenue" && method === "GET") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     return ownerRevenue(env);
   }
   if (path === "/api/owner/revenue/events" && method === "POST") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     await rateLimit(env, request, "owner-revenue-events", 120, 60 * 60000, user.id);
     return addPaymentEvent(env, request);
   }
   if (path === "/api/owner/access" && method === "GET") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     return ownerAccessSummary(env);
   }
+  if (path === "/api/owner/emails" && method === "POST") {
+    await ownerOnly(env, user);
+    await rateLimit(env, request, "owner-emails", 80, 60 * 60000, user.id);
+    return addOwnerEmail(env, request, user);
+  }
+  if (path === "/api/owner/emails/revoke" && method === "POST") {
+    await ownerOnly(env, user);
+    await rateLimit(env, request, "owner-emails-revoke", 80, 60 * 60000, user.id);
+    return revokeOwnerEmail(env, request, user);
+  }
   if (path === "/api/owner/newsletters" && method === "GET") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     return ownerNewsletterSummary(env);
   }
   if (path === "/api/owner/newsletters" && method === "POST") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     await rateLimit(env, request, "owner-newsletters", 20, 60 * 60000, user.id);
     return createNewsletterRelease(env, request, user);
   }
   if (path === "/api/owner/support" && method === "GET") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     return ownerSupportSummary(env);
   }
   const supportReply = /^\/api\/owner\/support\/([a-f0-9-]+)\/replies$/.exec(path);
   if (supportReply && method === "POST") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     await rateLimit(env, request, "owner-support-replies", 80, 60 * 60000, user.id);
     return createSupportReply(env, request, user, supportReply[1]);
   }
   const supportStatus = /^\/api\/owner\/support\/([a-f0-9-]+)$/.exec(path);
   if (supportStatus && method === "POST") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     await rateLimit(env, request, "owner-support-status", 160, 60 * 60000, user.id);
     return updateSupportTicket(env, request, supportStatus[1]);
   }
   if (path === "/api/owner/special-access-codes" && method === "POST") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     await rateLimit(env, request, "owner-special-access", 120, 60 * 60000, user.id);
     return createSpecialAccessCode(env, request, user);
   }
   const specialCode = /^\/api\/owner\/special-access-codes\/([a-f0-9]{64})$/.exec(path);
   if (specialCode && method === "DELETE") {
-    ownerOnly(env, user);
+    await ownerOnly(env, user);
     return revokeSpecialAccessCode(env, specialCode[1]);
   }
   if (path === "/api/special-access/redeem" && method === "POST") {

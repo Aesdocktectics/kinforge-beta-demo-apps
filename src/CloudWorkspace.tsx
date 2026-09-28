@@ -206,7 +206,8 @@ type BetaSignup = { accountId: string; email: string; name: string; accountCreat
 type NewsletterSubscriber = { accountId: string; email: string; name: string; status: string; source: string; createdAt?: number; updatedAt: number };
 type NewsletterRelease = { id: string; title: string; subject: string; summary?: string; status: string; objectKey: string; attachmentCount: number; size: number; createdAt: number; releasedAt?: number; recipientCount: number; deliveryStatus: string };
 type SpecialAccessCode = { hash: string; label: string; recipientEmail?: string; note?: string; createdAt: number; expiresAt?: number; maxUses: number; useCount: number; revokedAt?: number; lastRedeemedAt?: number; lastRedeemedByEmail?: string };
-type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[] };
+type OwnerEmailEntry = { email: string; role: string; source?: string; createdBy?: string; createdAt?: number; revokedAt?: number };
+type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[]; ownerEmails?: { envEmails: OwnerEmailEntry[]; managedEmails: OwnerEmailEntry[]; setupRequired?: boolean } };
 type OwnerNewsletterSummary = { setupRequired: boolean; subscribers: NewsletterSubscriber[]; releases: NewsletterRelease[] };
 type SupportTicket = { id: string; type: string; subject: string; name?: string; email?: string; message: string; device?: string; treeTitle?: string; proof?: string; permissionToReply: number | boolean; diagnostics?: string; status: string; priority: string; deliveryStatus: string; createdAt: number; updatedAt: number; lastReplyAt?: number };
 type SupportReply = { id: string; ticketId: string; authorEmail: string; message: string; deliveryStatus: string; createdAt: number };
@@ -316,6 +317,7 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
   const [message, setMessage] = useState("");
   const [createdCode, setCreatedCode] = useState("");
   const [form, setForm] = useState({ label: "Special access edition", recipientEmail: "", code: "", maxUses: "1", expiresAt: "", note: "" });
+  const [ownerEmailForm, setOwnerEmailForm] = useState({ email: "", role: "owner" });
   async function refresh() {
     setMessage("");
     const data = await cloudRequest<OwnerAccessSummary>("/api/owner/access");
@@ -343,6 +345,27 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
       setMessage("Special access code revoked.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not revoke the code.");
+    } finally { setBusy(false); }
+  }
+  async function addOwnerEmail() {
+    setBusy(true); setMessage("");
+    try {
+      await cloudRequest("/api/owner/emails", "POST", ownerEmailForm);
+      setOwnerEmailForm({ email: "", role: "owner" });
+      await refresh();
+      setMessage("Owner/admin email added. That account can open owner tools after signing in again.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not add that owner email.");
+    } finally { setBusy(false); }
+  }
+  async function revokeOwnerEmail(email: string) {
+    setBusy(true); setMessage("");
+    try {
+      await cloudRequest("/api/owner/emails/revoke", "POST", { email });
+      await refresh();
+      setMessage("Owner/admin email revoked from the app-managed list.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not revoke that owner email.");
     } finally { setBusy(false); }
   }
   async function copyCode() {
@@ -384,6 +407,25 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     <section className="owner-special-sync" aria-labelledby="special-sync-title">
       <h3 id="special-sync-title"><ShieldCheck size={17} />Special Access project sync</h3>
       <p>The owner app is the control room for the Special Access version: create a code, optionally lock it to a friend's email, track whether it was redeemed, revoke access codes, and copy a ready-to-send invite message without exposing the owner dashboard to ordinary users.</p>
+    </section>
+    <section className="owner-revenue-entry" aria-labelledby="owner-emails-title">
+      <h3 id="owner-emails-title"><Crown size={17} />Owner and admin emails</h3>
+      <p className="quiet">The deployment owner email stays in <code>KINFORGE_OWNER_EMAILS</code>. From here, the owner can add more owner/admin emails inside the app; those managed emails are checked together with <code>KINFORGE_OWNER_EMAILS</code>, <code>KINFORGE_ADMIN_EMAILS</code>, and <code>OWNER_EMAILS</code>.</p>
+      <div className="revenue-form-grid">
+        <label className="field"><span>Email to add</span><input className="control" type="email" value={ownerEmailForm.email} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, email: event.target.value })} placeholder="friend@example.com" /></label>
+        <label className="field"><span>Access role</span><select className="control" value={ownerEmailForm.role} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, role: event.target.value })}><option value="owner">Owner</option><option value="admin">Admin</option></select></label>
+      </div>
+      <div className="button-row"><button className="button" disabled={busy || !ownerEmailForm.email.trim()} onClick={() => void addOwnerEmail()}><PlusCircle size={16} />Add owner/admin email</button></div>
+      <div className="owner-access-columns">
+        <div>
+          <h3><ShieldCheck size={17} />Deployment owner emails</h3>
+          <div className="revenue-list owner-access-list">{summary?.ownerEmails?.envEmails.length ? summary.ownerEmails.envEmails.map(item => <div className="cloud-member" key={`${item.source}-${item.email}`}><span><strong>{item.email}</strong><small>{item.role} · {item.source}</small></span></div>) : <p className="quiet">No deployment owner emails are visible to this app.</p>}</div>
+        </div>
+        <div>
+          <h3><Crown size={17} />App-managed owner emails</h3>
+          <div className="revenue-list owner-access-list">{summary?.ownerEmails?.managedEmails.length ? summary.ownerEmails.managedEmails.map(item => <div className="cloud-member" key={item.email}><span><strong>{item.email}{item.revokedAt ? " · revoked" : ""}</strong><small>{item.role} · {item.createdAt ? `added ${new Date(item.createdAt).toLocaleString()}` : "managed in app"}</small></span>{!item.revokedAt && <button className="button ghost" disabled={busy} onClick={() => void revokeOwnerEmail(item.email)}>Revoke</button>}</div>) : <p className="quiet">No app-managed owner emails yet.</p>}</div>
+        </div>
+      </div>
     </section>
     <section className="owner-revenue-entry" aria-labelledby="create-access-title">
       <h3 id="create-access-title"><KeyRound size={17} />Create special access code</h3>
@@ -730,7 +772,9 @@ function CloudSignIn({ error: initialError, onSignedIn, onDemo }: { error: strin
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
   const linkAttempted = useRef(false);
+  const ownerSurface = typeof window !== "undefined" && /kinforge-genealogy-studio\.marianneleong3\.chatgpt\.site|localhost|127\.0\.0\.1/.test(window.location.hostname);
   const requireAgreement = () => {
+    if (ownerSurface) return true;
     if (privacyAccepted && termsAccepted) return true;
     setError("Click both I accept checkboxes to follow the KinForge Privacy Policy and Terms & Conditions before using the app.");
     return false;
@@ -750,7 +794,7 @@ function CloudSignIn({ error: initialError, onSignedIn, onDemo }: { error: strin
     event.preventDefault(); setBusy(true); setError(""); setStatus("");
     try {
       let result: { user: CloudUser; recoveryCode?: string };
-      if (!privacyAccepted || !termsAccepted) throw new Error("Click both I accept checkboxes to follow the KinForge Privacy Policy and Terms & Conditions before using the app.");
+      if (!ownerSurface && (!privacyAccepted || !termsAccepted)) throw new Error("Click both I accept checkboxes to follow the KinForge Privacy Policy and Terms & Conditions before using the app.");
       if (mode === "forgot" && recoveryMethod !== "secret") {
         const purpose = recoveryMethod === "login-code" || recoveryMethod === "login-link" ? "login" : "reset";
         if (!codeRequested) {
@@ -764,7 +808,7 @@ function CloudSignIn({ error: initialError, onSignedIn, onDemo }: { error: strin
         result = await cloudRequest("/api/auth/code/confirm", "POST", { email, purpose, code: recoveryCode, password });
         onSignedIn(result.user, result.recoveryCode); return;
       }
-      try { result = await cloudRequest(`/api/auth/${mode === "create" ? "register" : mode === "forgot" ? "recover" : "login"}`, "POST", { name, email, password, recoveryCode, privacyAccepted, termsAccepted }); }
+      try { result = await cloudRequest(`/api/auth/${mode === "create" ? "register" : mode === "forgot" ? "recover" : "login"}`, "POST", { name, email, password, recoveryCode, privacyAccepted: ownerSurface || privacyAccepted, termsAccepted: ownerSurface || termsAccepted }); }
       catch (error) {
         const local = legacyLogin(loadAuthState(), email, password);
         if (mode !== "login" || !(error instanceof CloudError) || error.status !== 401 || local.error) throw error;
@@ -787,7 +831,7 @@ function CloudSignIn({ error: initialError, onSignedIn, onDemo }: { error: strin
     {status && <p className="auth-message" role="status">{status}</p>}
     <button className="button" type="submit" disabled={busy}><LogIn size={16} />{busy ? "Connecting..." : actionText}</button>
     <div className="auth-links"><button type="button" onClick={() => { setMode("login"); setError(""); }}>Login</button><button type="button" onClick={() => { setMode("create"); setError(""); }}>Create account</button><button type="button" onClick={() => { setMode("forgot"); setError(""); }}>Forgot password</button><button type="button" onClick={() => { if (requireAgreement()) setUpdatesOpen(true); }}>Updates</button><button type="button" aria-label="Continue as guest" onClick={() => { if (!requireAgreement()) return; recordAppLegalAgreement(); recordPublicExportAgreement(); onDemo(); }}>Try a separate demo</button></div>
-    <LegalAgreementBox privacyAccepted={privacyAccepted} termsAccepted={termsAccepted} onPrivacyAccepted={setPrivacyAccepted} onTermsAccepted={setTermsAccepted} />
+    {!ownerSurface && <LegalAgreementBox privacyAccepted={privacyAccepted} termsAccepted={termsAccepted} onPrivacyAccepted={setPrivacyAccepted} onTermsAccepted={setTermsAccepted} />}
     {mode === "create" && <p className="quiet">Existing work on this device will sync automatically to this account.</p>}
   </form>{updatesOpen && <UpdateCenter onClose={() => setUpdatesOpen(false)} />}</div>;
 }
