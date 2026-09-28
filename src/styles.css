@@ -1076,6 +1076,24 @@ a {
   max-height: 300px;
 }
 
+.owner-website {
+  max-width: min(1120px, 96vw);
+}
+
+.owner-website-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.owner-website .owner-special-sync {
+  margin-top: 12px;
+  border: 1px solid rgba(34, 112, 118, 0.2);
+  border-radius: 8px;
+  background: linear-gradient(135deg, rgba(247, 224, 231, 0.55), rgba(237, 246, 247, 0.92));
+  padding: 12px;
+}
+
 .legal-agreement {
   display: grid;
   gap: 12px;

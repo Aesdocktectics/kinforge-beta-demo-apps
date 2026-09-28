@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText, ClipboardList } from "lucide-react";
+import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDollarSign, PlusCircle, KeyRound, UsersRound, ShieldCheck, Mail, Send, FileText, ClipboardList, Globe2, ExternalLink } from "lucide-react";
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
@@ -33,6 +33,7 @@ export default function CloudWorkspace() {
   const [accessOpen, setAccessOpen] = useState(false);
   const [newsletterOpen, setNewsletterOpen] = useState(false);
   const [supportOpen, setSupportOpen] = useState(false);
+  const [websiteOpen, setWebsiteOpen] = useState(false);
   const [exportMessage, setExportMessage] = useState("");
   const [choices, setChoices] = useState<ConflictChoices>({});
   const sync = useRef<CloudSync | null>(null);
@@ -111,14 +112,14 @@ export default function CloudWorkspace() {
   async function signOut() {
     try {
       await cloudRequest("/api/auth/logout", "POST", {});
-      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setSupportOpen(false); setError("");
+      await sync.current?.stop(); sync.current = null; clearAssetCache(); clearCloudStartup(); setUser(null); setView(null); setViewLibraryId(""); setRecovery(""); setSharing(false); setRevenueOpen(false); setAccessOpen(false); setNewsletterOpen(false); setSupportOpen(false); setWebsiteOpen(false); setError("");
     } catch (e) { setError(e instanceof Error ? e.message : "Reconnect before signing out."); }
   }
   if (demo) return <App cloud={{ state: demo, account: { id: "demo", name: "Guest demo", email: "" }, onChange: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, onSave: state => { setDemo(state); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); }, toolbar: <span className="cloud-status">Demo - saved on this device</span>, onSignOut: () => { setDemo(null); sessionStorage.removeItem("kinforge-demo-session"); }, readOnly: false, saved: true, demo: true, canManagePrivacy: true }} />;
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
   const toolbar = <div className="cloud-toolbar"><button className={`cloud-status ${view?.error ? "cloud-warning" : ""}`} onClick={() => void sync.current?.sync()} title={view?.lastSaved ? `Last saved ${new Date(view.lastSaved).toLocaleString()}` : "Sync now"} aria-label={`Cloud sync: ${view?.status || "Connecting"}`}>
-    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Payments</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Accounts & access</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setSupportOpen(true)}><ClipboardList size={16} />Support tickets</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
+    {view?.error ? <CloudOff size={17} /> : <Cloud size={17} />}<span>{view?.status || "Connecting"}</span></button>{library?.role === "owner" && <button className="button secondary" onClick={() => setDrivesOpen(true)}><Cloud size={16} />Cloud drives</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setRevenueOpen(true)}><BadgeDollarSign size={16} />Payments</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setAccessOpen(true)}><KeyRound size={16} />Accounts & access</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setNewsletterOpen(true)}><Mail size={16} />Newsletters</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setSupportOpen(true)}><ClipboardList size={16} />Support tickets</button>}{user.ownerDashboard && <button className="button secondary owner-tool-button" onClick={() => setWebsiteOpen(true)}><Globe2 size={16} />Websites</button>}<button className="button secondary" onClick={() => setUpdatesOpen(true)}><RefreshCw size={16} />Updates</button><button className="button secondary" onClick={() => setSharing(true)} title="Account, libraries and sharing"><Share2 size={16} />Account & sharing</button></div>;
   return <>
     {view && viewLibraryId === libraryId ? <div style={{ display: "contents" }} {...(view.preview ? { inert: "" } : {})}><App key={`${user.id}:${libraryId}`} cloud={{ state: view.state, account: user, onChange: state => sync.current?.change(state), onSave: async state => { sync.current?.change(state); await sync.current?.sync(); }, onSignOut: signOut, toolbar, readOnly: library?.role === "viewer" || view.locked || view.conflicts.length > 0, saved: !view.dirty && !view.error, demo: false, canManagePrivacy: library?.role === "owner" }} /></div> : <div className="cloud-loading"><p role="status">Opening your cloud library...</p><button className="button secondary" onClick={() => { if (!library) void refreshLibraries().catch(e => setError(e.message)); else setRetry(n => n + 1); }}><RefreshCw size={16} />Retry</button><button className="button ghost" onClick={signOut}>Sign out</button></div>}
     {view?.preview && <div className="cloud-notice" role="status">Opening the full saved library. Editing and downloads will be available when it is ready.</div>}
@@ -130,6 +131,7 @@ export default function CloudWorkspace() {
     {accessOpen && user.ownerDashboard && <OwnerAccessDialog onClose={() => setAccessOpen(false)} />}
     {newsletterOpen && user.ownerDashboard && <OwnerNewsletterDialog onClose={() => setNewsletterOpen(false)} />}
     {supportOpen && user.ownerDashboard && <OwnerSupportDialog onClose={() => setSupportOpen(false)} />}
+    {websiteOpen && user.ownerDashboard && <OwnerWebsiteControlDialog onClose={() => setWebsiteOpen(false)} />}
     {updatesOpen && <UpdateCenter currentState={view?.state ?? null} onClose={() => setUpdatesOpen(false)} />}
     {exportMessage && !recovery && <div className="cloud-export-notice" role="status"><span>{exportMessage}</span><button aria-label="Dismiss export message" onClick={() => setExportMessage("")}><X size={16} /></button></div>}
     {!!view?.conflicts.length && !recovery && <div className="cloud-scrim"><section className="cloud-dialog wide" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><h2 id="conflict-title">Changes need your choice</h2><p>Two devices changed the same information. Choose which version to keep for each item.</p>{view.conflicts.map(conflict => <fieldset className="sync-conflict" key={conflict.path}><legend>{conflict.path}</legend>{(["local", "remote"] as const).map(side => <label key={side}><input type="radio" name={conflict.path} checked={choices[conflict.path] === side} onChange={() => setChoices(previous => ({ ...previous, [conflict.path]: side }))} /><strong>{side === "local" ? "This device" : "Cloud version"}</strong><pre>{formatValue(conflict[side])}</pre></label>)}</fieldset>)}<button className="button" disabled={view.conflicts.some(c => !choices[c.path])} onClick={() => void sync.current?.resolve(choices).catch(e => setError(e.message))}>Save my choices</button></section></div>}
@@ -562,6 +564,97 @@ function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
           <div className="button-row"><button className="button" disabled={busy || !reply.trim()} onClick={() => void sendReply()}><Send size={16} />{busy ? "Sending..." : "Save and send reply"}</button></div>
         </> : <p className="quiet">Choose a ticket to review.</p>}
       </div>
+    </section>
+    {message && <p role="status">{message}</p>}
+  </section></div>;
+}
+
+const websiteEditions = [
+  { id: "public", label: "Public site", url: "https://kinforge-genealogy-studio-public.marianneleong3.chatgpt.site/website/", note: "Customer-facing landing page, downloads, pricing, About Us, support, releases and free-account entry." },
+  { id: "special", label: "Special Access site", url: "https://kinforge-genealogy-special-access-edition.marianneleong3.chatgpt.site/", note: "Code-protected edition with its own downloads and approved Special Access account flow." },
+  { id: "owner", label: "Owner site", url: "https://kinforge-genealogy-studio.marianneleong3.chatgpt.site/", note: "Private owner version for payments, accounts, newsletters, support tickets and app release control." }
+];
+const websitePages = ["Landing page", "Downloads", "About Us", "Founding Story", "Mission", "Vision", "Values", "Plans & pricing", "Discount roles", "Support", "Privacy Policy", "Terms & Conditions", "Releases", "Special Access gate"];
+const websiteUpdateTypes = ["Text/copy update", "Pricing or discount update", "Download/package update", "Legal policy update", "Design/layout update", "Chart/infographic update", "Feature announcement", "Bug fix"];
+function OwnerWebsiteControlDialog({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({ edition: "public", page: "Landing page", type: "Text/copy update", title: "", message: "", releaseVersion: "1.5.0", publishNote: "" });
+  const [message, setMessage] = useState("");
+  const edition = websiteEditions.find(item => item.id === form.edition) || websiteEditions[0];
+  const brief = [
+    "KinForge owner website update brief",
+    `Created: ${new Date().toLocaleString()}`,
+    `Edition: ${edition.label}`,
+    `Page: ${form.page}`,
+    `Update type: ${form.type}`,
+    `Release version: ${form.releaseVersion || "Not specified"}`,
+    "",
+    `Title: ${form.title || "Untitled website update"}`,
+    "",
+    "Requested change:",
+    form.message || "No detailed change has been written yet.",
+    "",
+    "Publish note:",
+    form.publishNote || "No publish note entered.",
+    "",
+    "Live link:",
+    edition.url,
+    "",
+    "Owner checklist:",
+    "- Keep the public homepage dynamic, not a sign-in page.",
+    "- Keep About Us submenu pages connected: About Us, Founding Story, Mission, Vision and Values.",
+    "- Keep Privacy Policy and Terms & Conditions visible in the navigation.",
+    "- Keep public, paid/free, beta, owner and Special Access editions aligned while preserving the Special Access code gate.",
+    "- Put new app packages on the downloads/updates page before publishing the release."
+  ].join("\n");
+  async function copyBrief() {
+    try {
+      await navigator.clipboard.writeText(brief);
+      setMessage("Website update brief copied.");
+    } catch {
+      setMessage("Copy is unavailable. Use Download brief instead.");
+    }
+  }
+  async function downloadBrief() {
+    try {
+      const { downloadBlob } = await import("./exporters");
+      const name = `KinForge-website-update-${form.edition}-${Date.now()}.txt`;
+      await downloadBlob(name, brief, "text/plain;charset=utf-8", undefined, { localOnly: true });
+      setMessage("Website update brief downloaded.");
+    } catch {
+      setMessage("The brief could not be downloaded. You can still copy it.");
+    }
+  }
+  return <div className="cloud-scrim"><section className="cloud-dialog wide owner-access owner-website" role="dialog" aria-modal="true" aria-labelledby="owner-websites-title">
+    <button className="cloud-close" aria-label="Close website control center" onClick={onClose}><X size={20} /></button>
+    <h2 id="owner-websites-title">Owner website control center</h2>
+    <p className="quiet">Private owner workspace for reviewing, drafting and preparing changes across the public, owner and Special Access KinForge sites. Ordinary public, paid, free, beta and Special Access accounts cannot open this area.</p>
+    <div className="revenue-metrics">
+      {websiteEditions.map(item => <article key={item.id}>
+        <span>{item.label}</span><strong>{item.id === "special" ? "Code gated" : item.id === "owner" ? "Owner only" : "Public"}</strong><small>{item.note}</small>
+      </article>)}
+    </div>
+    <section className="owner-revenue-entry" aria-labelledby="website-quick-links-title">
+      <h3 id="website-quick-links-title"><Globe2 size={17} />Live website links</h3>
+      <div className="owner-website-links">
+        {websiteEditions.map(item => <a className="button secondary" key={item.id} href={item.url} target="_blank" rel="noreferrer"><ExternalLink size={16} />Open {item.label}</a>)}
+      </div>
+    </section>
+    <section className="owner-revenue-entry" aria-labelledby="website-update-title">
+      <h3 id="website-update-title"><FileText size={17} />Draft a website update</h3>
+      <div className="revenue-form-grid">
+        <label className="field"><span>Edition</span><select className="control" value={form.edition} onChange={event => setForm({ ...form, edition: event.target.value })}>{websiteEditions.map(item => <option value={item.id} key={item.id}>{item.label}</option>)}</select></label>
+        <label className="field"><span>Page</span><select className="control" value={form.page} onChange={event => setForm({ ...form, page: event.target.value })}>{websitePages.map(page => <option key={page}>{page}</option>)}</select></label>
+        <label className="field"><span>Change type</span><select className="control" value={form.type} onChange={event => setForm({ ...form, type: event.target.value })}>{websiteUpdateTypes.map(type => <option key={type}>{type}</option>)}</select></label>
+        <label className="field"><span>Release version</span><input className="control" value={form.releaseVersion} onChange={event => setForm({ ...form, releaseVersion: event.target.value })} /></label>
+      </div>
+      <label className="field"><span>Update title</span><input className="control" value={form.title} onChange={event => setForm({ ...form, title: event.target.value })} placeholder="Example: Refresh public landing page downloads and Special Access prompt" /></label>
+      <label className="field"><span>What should change?</span><textarea className="control" rows={7} value={form.message} onChange={event => setForm({ ...form, message: event.target.value })} placeholder="Write the website change, new wording, download replacement, pricing detail, legal wording, chart update, or page behavior here." /></label>
+      <label className="field"><span>Publish note</span><textarea className="control" rows={4} value={form.publishNote} onChange={event => setForm({ ...form, publishNote: event.target.value })} placeholder="What should be checked after publishing? Example: public home should not flash sign-in, Special Access must ask for code first." /></label>
+      <div className="button-row"><button className="button" onClick={() => void copyBrief()}><Copy size={16} />Copy update brief</button><button className="button secondary" onClick={() => void downloadBrief()}><Download size={16} />Download brief</button><a className="button secondary" href={edition.url} target="_blank" rel="noreferrer"><ExternalLink size={16} />Review selected site</a></div>
+    </section>
+    <section className="owner-special-sync" aria-labelledby="website-sync-title">
+      <h3 id="website-sync-title"><ShieldCheck size={17} />Dynamic-site rules</h3>
+      <p>KinForge websites should stay dynamic: public pages open to downloads and product information, sign-in appears only after the user chooses an account action, Special Access opens with the access-code gate, and the owner site keeps payments, support, account access, newsletters and website update work private.</p>
     </section>
     {message && <p role="status">{message}</p>}
   </section></div>;
