@@ -1,6 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="KinForge Supreme Suite owner logo">
-  <rect width="96" height="96" rx="18" fill="#1f2630"/>
-  <circle cx="48" cy="48" r="35" fill="#263844" stroke="#d7c4a2" stroke-width="4"/>
-  <path d="M28 72V24h11v20l18-20h14L51 47l23 25H60L39 50v22H28Z" fill="#f5d3c8"/>
-  <path d="M48 14l7 10 12 2-9 9 2 12-12-6-12 6 2-12-9-9 12-2 7-10Z" fill="#d7c4a2"/>
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="86" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".92"/>
+      <stop offset=".42" stop-color="#1f2630"/>
+      <stop offset="1" stop-color="#d7c4a2" stop-opacity=".34"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#1f2937" flood-opacity=".16"/></filter>
+  </defs>
+  <rect x="5" y="5" width="86" height="86" rx="23" fill="url(#bg)" stroke="#d7c4a2" stroke-opacity=".28"/>
+  <rect x="13" y="13" width="70" height="70" rx="18" fill="rgba(255,255,255,.64)" filter="url(#shadow)"/>
+  <path d="M28 71V25h11v19l17-19h14L50 47l22 24H58L39 50v21H28Z" fill="#f5d3c8"/>
+  <path d="M39 48h27" stroke="#d7c4a2" stroke-width="5" stroke-linecap="round" opacity=".9"/>
+  <circle cx="69" cy="25" r="4.5" fill="#6f9894"/>
+  <circle cx="72" cy="71" r="4.5" fill="#d7c4a2"/>
+  <path d="M48 14l7 10 12 2-9 9 2 12-12-6-12 6 2-12-9-9 12-2 7-10Z" fill="#d7c4a2"/><circle cx="48" cy="48" r="35" fill="none" stroke="#d7c4a2" stroke-width="4" opacity=".72"/>
+  <title>KinForge Supreme Suite owner logo</title>
+  <desc>KinForge owner edition mark using a branching K, connected nodes, and edition-specific color coding.</desc>
 </svg>

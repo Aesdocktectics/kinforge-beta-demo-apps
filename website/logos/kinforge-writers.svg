@@ -1,6 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="KinForge writers logo">
-  <rect width="96" height="96" rx="22" fill="#fff7f0"/>
-  <path d="M27 73V26h10v19l17-19h13L48 48l21 25H56L37 51v22H27Z" fill="#734b44"/>
-  <path d="M61 24l12 12-27 28-14 3 3-14 26-29Z" fill="#c9a16f"/>
-  <path d="M58 27l11 11" stroke="#734b44" stroke-width="4"/>
+  <defs>
+    <linearGradient id="bg" x1="10" y1="8" x2="86" y2="88" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff" stop-opacity=".92"/>
+      <stop offset=".42" stop-color="#fff7f0"/>
+      <stop offset="1" stop-color="#c9a16f" stop-opacity=".34"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="5" stdDeviation="5" flood-color="#1f2937" flood-opacity=".16"/></filter>
+  </defs>
+  <rect x="5" y="5" width="86" height="86" rx="23" fill="url(#bg)" stroke="#c9a16f" stroke-opacity=".28"/>
+  <rect x="13" y="13" width="70" height="70" rx="18" fill="rgba(255,255,255,.64)" filter="url(#shadow)"/>
+  <path d="M28 71V25h11v19l17-19h14L50 47l22 24H58L39 50v21H28Z" fill="#734b44"/>
+  <path d="M39 48h27" stroke="#c9a16f" stroke-width="5" stroke-linecap="round" opacity=".9"/>
+  <circle cx="69" cy="25" r="4.5" fill="#236e77"/>
+  <circle cx="72" cy="71" r="4.5" fill="#c9a16f"/>
+  <path d="M61 24l12 12-27 28-14 3 3-14 26-29Z" fill="#c9a16f"/><path d="M58 27l11 11" stroke="#734b44" stroke-width="4"/>
+  <title>KinForge writers logo</title>
+  <desc>KinForge writers edition mark using a branching K, connected nodes, and edition-specific color coding.</desc>
 </svg>
