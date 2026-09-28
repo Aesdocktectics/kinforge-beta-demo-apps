@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="KinForge free logo">
+  <rect width="96" height="96" rx="24" fill="#f4fbf7"/>
+  <path d="M23 70V27h11v18l16-18h14L45 48l21 22H51L34 51v19H23Z" fill="#2b7a64"/>
+  <path d="M55 29c10 4 16 12 18 23M59 43c8 3 13 9 15 17" fill="none" stroke="#7cbf9e" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="73" cy="52" r="5" fill="#7cbf9e"/>
+  <circle cx="75" cy="66" r="5" fill="#7cbf9e"/>
+  <path d="M23 78h50" stroke="#c9a16f" stroke-width="4" stroke-linecap="round"/>
+</svg>
