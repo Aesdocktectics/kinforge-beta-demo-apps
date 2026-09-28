@@ -2,54 +2,115 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; media-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="KinForge Genealogy Studio is relationship mapping, genealogy, genogram and character-planning software for social workers, writers, genealogists, historians, roleplayers and RPG players." />
+    <meta name="robots" content="index,follow,max-image-preview:large" />
     <title>KinForge Genealogy Studio</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="icon" href="/website/icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/website/styles.css" />
   </head>
   <body>
-    <header class="site-hero">
-      <nav>
-        <span class="brand-lockup"><img src="icon.svg" alt="" /><strong>KinForge</strong></span>
-        <span>Product of Dreams of Serene Landscapes</span>
-        <span>Copyright 2026 Dreams of Serene Landscapes. All rights reserved.</span>
+    <a class="skip" href="#main">Skip to content</a>
+    <header class="site-header">
+      <a class="brand" href="/website/"><img src="/website/icon.svg" width="42" height="42" alt=""><span>KinForge<small>Genealogy Studio</small></span></a>
+      <nav class="desktop-nav" aria-label="Website">
+        <a href="/website/" aria-current="page">Overview</a>
+        <a href="/website/app/">Official app</a>
+        <a href="/website/features/">Use cases</a>
+        <a href="/website/pricing/">Plans</a>
+        <a href="/website/discounts/">Discounts</a>
+        <a href="/website/founding-story/">About us</a>
+        <a href="/website/tutorials/">Learn</a>
+        <a href="/downloads">Download</a>
+        <a href="/website/support/">Support</a>
       </nav>
-      <div class="hero-copy">
-        <p>Family tree, heritage, and genealogy software</p>
-        <h1>KinForge Genealogy Studio</h1>
-        <p>Explore generations in an interactive family chart. Follow relatives into their own profiles, search the full glyph library, connect family relationships, and keep life stories, sources, photographs and evidence quality together.</p>
-        <a href="/">Open KinForge</a>
-      </div>
+      <details class="mobile-nav">
+        <summary>Menu</summary>
+        <nav aria-label="Mobile website">
+          <a href="/website/">Overview</a>
+          <a href="/website/app/">Official app</a>
+          <a href="/website/features/">Use cases</a>
+          <a href="/website/pricing/">Plans</a>
+          <a href="/website/discounts/">Discounts</a>
+          <a href="/website/founding-story/">About us</a>
+          <a href="/website/tutorials/">Learn</a>
+          <a href="/downloads">Download</a>
+          <a href="/website/beta/">Beta</a>
+          <a href="/website/support/">Support</a>
+          <a href="/website/releases/">Releases</a>
+          <a href="/">Open app</a>
+        </nav>
+      </details>
+      <a class="button small" href="/">Open app</a>
     </header>
-    <main>
-      <section>
-        <h2>Your family, connected</h2>
-        <img src="chart-desktop.png" alt="KinForge's interactive family tree with connected generations and an editable person panel" style="display:block;width:100%;height:auto;border-radius:6px" />
-        <p>Separate pages for your tree, people, families, research and records. Each person's profile has its own overview, timeline, sources and media.</p>
+    <main id="main">
+      <section class="page-heading wrap">
+        <p class="eyebrow">Relationship maps for families, cases, history and story worlds</p>
+        <h1>KinForge Genealogy Studio</h1>
+        <p class="lead">Map how people connect across generations, households, books, cases, campaigns and communities. Built for social workers, writers, genealogists, historians, roleplayers, RPG players and anyone tracking complex relationships.</p>
       </section>
-      <section>
-        <h2>Your genealogy workspace</h2>
-        <div class="grid">
-          <article><h3>Family workspace</h3><p>Editable family relationships, person profiles and chart navigation, with automatic cloud sync to your KinForge account.</p></article>
-          <article><h3>One account, every device</h3><p>Your trees, collections, subcollections, books, reports and attachments stay together. Sign in with the same KinForge email and password on Mac, Windows, iPhone, iPad or the web.</p></article>
-          <article><h3>Private libraries and sharing</h3><p>Each account has its own library. Invite another account to view or edit it. Sensitive details can stay private to the owner or be shared with signed-in invited members. Guest visitors cannot access account libraries.</p></article>
-          <article><h3>Saved items and protection records</h3><p>Download or delete individual records, trees, books and collections. Record custody, protection and care events for people, families and relationships, with plain-language term meanings.</p></article>
-          <article><h3>Glyph Library</h3><p>Search every event, relationship, disability, access and record-status symbol, with downloadable SVGs and plain-language meanings.</p></article>
-          <article><h3>Evidence Quality Studio</h3><p>Scores profiles by sources, media, parentage, duplicate risk and plausibility issues, then turns weak spots into research tasks.</p></article>
-          <article><h3>Local research</h3><p>Archive search across people, records, sources and places, with reviewed evidence links and no provider lock-in.</p></article>
-          <article><h3>Independent delivery</h3><p>No third-party research launcher or hosted processing service is required for the new local research workflow.</p></article>
+      <div class="actions">
+        <a class="button" href="/downloads">Download the official app</a>
+        <a class="button secondary" href="/">Try the web app</a>
+        <a class="button secondary" href="/website/founding-story/">About us</a>
+      </div>
+      <figure class="product-shot wrap">
+        <img src="/website/chart-desktop.png" width="1440" height="960" alt="KinForge demo relationship tree with connected generations and a person details panel">
+        <figcaption>A fictional family in the separate guest demo. No account required.</figcaption>
+      </figure>
+      <section class="band">
+        <div class="wrap">
+          <p class="eyebrow">Everything is still here</p>
+          <h2>Downloads, About Us, pricing, tutorials, support and releases all stay visible.</h2>
+          <p class="lead">The public website is the customer-facing home for KinForge: learn what it does, see who it is for, download the app, check releases, request support, and explore pricing or discounts.</p>
+          <div class="feature-columns">
+            <article><h3>Downloads</h3><p>Get the Apple Silicon, Intel Mac and Windows packages, with checksums and release notes.</p><a href="/downloads">Open downloads &rarr;</a></article>
+            <article><h3>About us</h3><p>Read the founding story, research themes, accessibility mission and why KinForge was built.</p><a href="/website/founding-story/">Read about KinForge &rarr;</a></article>
+            <article><h3>Plans and discounts</h3><p>See personal and business pricing, role discounts, quote requests and support paths.</p><a href="/website/pricing/">See plans &rarr;</a></article>
+          </div>
         </div>
       </section>
-      <section>
-        <h2>Release status</h2>
-        <p>Version 1.3.9 adds the app-wide language switcher to the top bar while keeping tree-language settings separate in Manage Trees. Books still contain collections, collections contain subcollections, and trees/reports stay inside their selected subcollection.</p>
-        <p>Google Drive and OneDrive connections cover your private library, trees, collections, subcollections, books, media, report drafts and downloaded reports and backups. Provider registration is required before drive sign-in is available. KinForge account sync continues across devices.</p>
-        <h3>Mac and Windows downloads</h3>
-        <p><a href="/downloads">Download for Apple Silicon, Intel or Windows</a></p>
-        <p>Installers are kept in the KinForge folder in Applications. Reports, charts, backups and other exported files stay in Downloads/KinForge Genealogy Studio.</p>
-        <p>Mac editions are available for Apple Silicon and Intel, with Windows installer and portable editions. The browser edition is installable from Safari using Add to Home Screen.</p>
-        <a href="/">Sign in to your cloud library</a>
+      <section class="wrap section">
+        <h2>Built for more than family trees</h2>
+        <p class="lead">KinForge is for social workers mapping care context, writers building casts and series continuity, genealogists researching family lines, historians tracking people and evidence, and roleplayers or RPG players managing worlds and campaigns.</p>
+        <div class="feature-columns">
+          <article><h3>Relationship clarity</h3><p>Follow parents, partners, siblings, guardians, descendants and other important links in a connected chart.</p></article>
+          <article><h3>Project structure</h3><p>Keep books, cases, collections, subcollections, campaigns and trees together in your library.</p></article>
+          <article><h3>Readable outputs</h3><p>Use reports, timelines, tutorials and support resources to understand complicated relationships.</p></article>
+        </div>
+        <div class="actions left">
+          <a class="button" href="/website/features/">Explore use cases</a>
+          <a class="button secondary" href="/website/tutorials/">Watch tutorials</a>
+          <a class="button secondary" href="/website/support/">Contact support</a>
+        </div>
+      </section>
+      <section class="band">
+        <div class="wrap">
+          <h2>Quick links</h2>
+          <div class="business-grid">
+            <article><h3>Official app</h3><p>Browser, Mac and Windows usage notes.</p><a href="/website/app/">Open app page</a></article>
+            <article><h3>Beta</h3><p>Register interest in future releases.</p><a href="/website/beta/">Open beta page</a></article>
+            <article><h3>Releases</h3><p>Current version and update notes.</p><a href="/website/releases/">Open releases</a></article>
+          </div>
+        </div>
       </section>
     </main>
+    <footer>
+      <div>
+        <a class="brand" href="/website/"><img src="/website/icon.svg" width="36" height="36" alt="">KinForge</a>
+        <p>Product of Dreams of Serene Landscapes</p>
+        <small>Copyright &copy; 2026 Dreams of Serene Landscapes.</small>
+      </div>
+      <nav aria-label="Footer">
+        <a href="/website/app/">Official app</a>
+        <a href="/downloads">Downloads</a>
+        <a href="/website/founding-story/">About us</a>
+        <a href="/website/tutorials/">Tutorials</a>
+        <a href="/website/privacy-policy/">Privacy Policy</a>
+        <a href="/website/terms/">Terms</a>
+        <a href="/website/support/">Help &amp; support</a>
+      </nav>
+    </footer>
   </body>
 </html>
