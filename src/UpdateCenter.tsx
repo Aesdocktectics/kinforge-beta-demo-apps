@@ -2,19 +2,21 @@ import { useEffect, useMemo, useState } from "react";
 import { Download, FolderOpen, RefreshCw, ShieldCheck, Sparkles, X } from "lucide-react";
 import { cloudRequest } from "./cloudApi";
 import { internalMonthlyUpdateBrief, recordUpdateAgentSignal } from "./updateAgent";
-import type { NativeAppInfo } from "./nativeStorage";
+import type { NativeAppInfo, NativeLocalUpdatePackage } from "./nativeStorage";
 import type { AppState } from "./domain";
 import { buildBackup, downloadBlob } from "./exporters";
 
 type ReleaseFile = {
   id: string;
+  version?: string;
   platform: string;
   format: string;
   name: string;
   size: number;
-  sha256: string;
+  sha256?: string;
   available: boolean;
   url: string;
+  localPath?: string;
 };
 
 type LatestRelease = {
@@ -52,11 +54,14 @@ export default function UpdateCenter({ onClose, currentState }: { onClose: () =>
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
+  const [localPackages, setLocalPackages] = useState<ReleaseFile[]>([]);
   const [betaEnabled, setBetaEnabled] = useState(() => localStorage.getItem("kinforge-beta-preview-channel") === "enabled");
-  const files = useMemo(() => release ? preferredFiles(release.files, appInfo) : [], [release, appInfo]);
-  const newer = release && appInfo ? compareVersions(release.version, appInfo.version) > 0 : false;
-  const upToDate = Boolean(release && appInfo && compareVersions(release.version, appInfo.version) <= 0);
-  const showPackages = Boolean(release && !checking && (!appInfo || newer));
+  const files = useMemo(() => localPackages.length ? localPackages : release ? preferredFiles(release.files, appInfo) : [], [appInfo, localPackages, release]);
+  const newestLocalVersion = localPackages.length ? localPackages[localPackages.length - 1]?.version : "";
+  const latestVersion = newestLocalVersion || release?.version || "";
+  const newer = Boolean(localPackages.length || (release && appInfo && compareVersions(release.version, appInfo.version) > 0));
+  const upToDate = Boolean(!localPackages.length && release && appInfo && compareVersions(release.version, appInfo.version) <= 0);
+  const showPackages = Boolean(!checking && files.length && (!appInfo || newer));
   const betaInviteUrl = `${window.location.origin}${window.location.pathname}?beta=1#/beta-preview`;
 
   async function check(origin: "manual" | "auto" = "manual") {
@@ -64,12 +69,19 @@ export default function UpdateCenter({ onClose, currentState }: { onClose: () =>
     try {
       recordUpdateAgentSignal(origin === "manual" ? "manual-update-check" : "auto-update-check");
       internalMonthlyUpdateBrief();
-      const [latest, info] = await Promise.all([
+      const [latest, info, local] = await Promise.all([
         cloudRequest<LatestRelease>("/api/releases/latest"),
-        window.kinforgeNative?.getAppInfo?.().catch(() => null) ?? Promise.resolve(null)
+        window.kinforgeNative?.getAppInfo?.().catch(() => null) ?? Promise.resolve(null),
+        window.kinforgeNative?.listLocalUpdates?.().catch(() => [] as NativeLocalUpdatePackage[]) ?? Promise.resolve([])
       ]);
+      const nativePackages = local.map(file => ({ ...file, available: true }));
       setRelease(latest); setAppInfo(info);
-      if (info && compareVersions(latest.version, info.version) <= 0) setMessage(`KinForge is up to date at version ${info.version}. No app update is available right now.`);
+      setLocalPackages(nativePackages);
+      if (nativePackages.length) {
+        const first = nativePackages[0]?.version;
+        const last = nativePackages[nativePackages.length - 1]?.version;
+        setMessage(`Ready update packages are available locally from ${first} through ${last}. Choose Open beside the package you want to install.`);
+      } else if (info && compareVersions(latest.version, info.version) <= 0) setMessage(`KinForge is up to date at version ${info.version}. No app update is available right now.`);
       else if (!info) setMessage("The web app updates automatically when the published site is refreshed. Your library data is not changed by app updates.");
       else setMessage("A newer verified KinForge app package is available. Installing it updates the app, not your library data.");
     } catch (error) {
@@ -97,6 +109,24 @@ export default function UpdateCenter({ onClose, currentState }: { onClose: () =>
     } finally {
       setBusy(false);
     }
+  }
+
+  async function openOrDownload(file: ReleaseFile) {
+    if (file.localPath && window.kinforgeNative?.openLocalUpdate) {
+      setBusy(true); setMessage("");
+      try {
+        recordUpdateAgentSignal("local-update-opened", { version: file.version || "unknown", platform: file.platform, format: file.format });
+        const opened = await window.kinforgeNative.openLocalUpdate(file.localPath);
+        setMessage(opened.error ? opened.error : `Opened ${file.name}. Your library is left unchanged.`);
+      } catch (error) {
+        recordUpdateAgentSignal("local-update-open-failed", { version: file.version || "unknown", platform: file.platform, format: file.format });
+        setMessage(error instanceof Error ? error.message : "KinForge could not open this local update package.");
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    await download(file);
   }
 
   function setBetaChannel(enabled: boolean) {
@@ -156,7 +186,7 @@ export default function UpdateCenter({ onClose, currentState }: { onClose: () =>
     <p className="quiet">KinForge checks monthly for verified app updates. Installing an update changes the KinForge app package and interface, not your library, trees, books, collections, media, or reports.</p>
     <div className="update-summary">
       <div><strong>Installed</strong><span>{appInfo ? `${appInfo.version} · ${appInfo.platformLabel}` : "Web app"}</span></div>
-      <div><strong>Latest</strong><span>{release?.version || "Checking..."}</span></div>
+      <div><strong>Latest</strong><span>{latestVersion || "Checking..."}</span></div>
       <div><strong>Status</strong><span>{checking ? "Checking..." : newer ? "Update available" : upToDate ? "Up to date" : "Ready"}</span></div>
     </div>
     <div className="button-row">
@@ -184,8 +214,8 @@ export default function UpdateCenter({ onClose, currentState }: { onClose: () =>
       <h3>Available Update Packages</h3>
       <div className="update-files">
         {files.map(file => <article key={file.id} className="update-file">
-          <div><strong>{file.platform} {file.format.toUpperCase()}</strong><span>{file.name} · {formatSize(file.size)}</span></div>
-          <button className="button" disabled={!file.available || busy} onClick={() => void download(file)}><Download size={16} />{file.available ? "Download" : "Preparing"}</button>
+          <div><strong>{file.version ? `Version ${file.version} · ` : ""}{file.platform} {file.format.toUpperCase()}</strong><span>{file.name} · {formatSize(file.size)}</span></div>
+          <button className="button" disabled={busy || (!file.available && !file.localPath)} onClick={() => void openOrDownload(file)}><Download size={16} />{file.localPath ? "Open" : file.available ? "Download" : "Preparing"}</button>
         </article>)}
         {release && files.length === 0 && <p className="quiet">No package is published for this platform yet. Open the web app while the package is prepared.</p>}
       </div>

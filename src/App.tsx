@@ -1848,7 +1848,7 @@ Quality checklist:
     void exportText(`KinForge-Translator-AI-${translatorAi.targetLanguage}.txt`, body);
   };
   const supportDiagnostics = () => [
-    `App version: 1.3.8`,
+    `App version: ${import.meta.env.PACKAGE_VERSION || "1.6.0"}`,
     `Mode: ${cloud ? "cloud account" : guestMode ? "guest/demo" : "local account"}`,
     `Signed in: ${cloud?.account.email || user?.email || "not signed in"}`,
     `Tree: ${tree?.title || "none"}`,
@@ -3277,7 +3277,7 @@ Quality checklist:
           <div className="ai-context-card">
             <strong>{helpdeskAi.area}</strong>
             <span>{helpdeskAi.responseType} · {helpdeskAi.urgency}</span>
-            <small>{cloud ? "Cloud account attached" : "Local/demo context"} · version {import.meta.env.PACKAGE_VERSION || "1.3.8"}</small>
+            <small>{cloud ? "Cloud account attached" : "Local/demo context"} · version {import.meta.env.PACKAGE_VERSION || "1.6.0"}</small>
           </div>
           <textarea className="textarea ai-output" aria-label="Helpdesk AI answer" value={helpdeskAi.output} placeholder="Describe a KinForge issue and click Generate help." onChange={event => setHelpdeskAi(current => ({ ...current, output: event.target.value }))} />
           <p className="quiet">Helpdesk AI is for using and improving KinForge. It never needs passwords, recovery codes, private records, or sensitive files in the support text.</p>
@@ -3336,7 +3336,7 @@ Quality checklist:
             <label className="field"><span>Your name</span><input className="control" value={supportForm.name} onChange={event => setSupportForm(current => ({ ...current, name: event.target.value }))} /></label>
             <label className="field"><span>Email for replies</span><input className="control" type="email" value={supportForm.email} onChange={event => setSupportForm(current => ({ ...current, email: event.target.value }))} /></label>
             <label className="field"><span>Request type</span><select className="control" value={supportForm.type} onChange={event => setSupportForm(current => ({ ...current, type: event.target.value }))}><option>Support request</option><option>App feedback</option><option>Customer review</option><option>Copyright-free permission request</option><option>Bug report</option><option>Feature request</option><option>Account or login help</option><option>Sync issue</option><option>Download question</option><option>Accessibility request</option></select></label>
-            <label className="field"><span>Device/app version</span><input className="control" value={supportForm.device} placeholder="Example: Mac app 1.3.8 on Apple Silicon" onChange={event => setSupportForm(current => ({ ...current, device: event.target.value }))} /></label>
+            <label className="field"><span>Device/app version</span><input className="control" value={supportForm.device} placeholder="Example: Mac app 1.6.0 on Apple Silicon" onChange={event => setSupportForm(current => ({ ...current, device: event.target.value }))} /></label>
           </div>
           <label className="field"><span>Subject</span><input className="control" value={supportForm.subject} onChange={event => setSupportForm(current => ({ ...current, subject: event.target.value }))} /></label>
           <label className="field"><span>Proof for copyright-free permission</span><textarea className="control" rows={4} value={supportForm.proof} placeholder="Only for permission requests: describe or link real non-AI proof, such as photos together or digital/physical records showing you are close to Dreams of Serene Landscapes." onChange={event => setSupportForm(current => ({ ...current, proof: event.target.value }))} /></label>

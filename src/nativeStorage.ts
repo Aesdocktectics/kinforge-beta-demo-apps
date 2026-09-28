@@ -14,11 +14,25 @@ export type NativeStorageFolders = {
 export type NativeSaveResult = { ok: boolean; path: string; category: NativeStorageCategory };
 export type NativeAppInfo = { version: string; platform: string; arch: string; platformLabel: string; monthlyUpdateCadenceDays: number };
 export type NativeUpdateResult = { ok: boolean; path: string; sha256?: string };
+export type NativeLocalUpdatePackage = {
+  id: string;
+  version: string;
+  platform: string;
+  format: string;
+  name: string;
+  size: number;
+  sha256?: string;
+  available: boolean;
+  localPath: string;
+  url: string;
+};
 
 type NativeBridge = {
   openDriveAuth?: (url: string) => Promise<void>;
   cloudRequest?: (request: { path: string; method: string; body?: string; privateAccess?: PrivateAccessSettings }) => Promise<{ status: number; body: string }>;
   getAppInfo?: () => Promise<NativeAppInfo>;
+  listLocalUpdates?: () => Promise<NativeLocalUpdatePackage[]>;
+  openLocalUpdate?: (filePath: string) => Promise<{ ok: boolean; path: string; error?: string }>;
   downloadUpdate?: (url: string) => Promise<NativeUpdateResult>;
   openUpdateDownloads?: () => Promise<{ ok: boolean; path: string; error?: string }>;
   getStorageFolders: () => Promise<NativeStorageFolders>;

@@ -147,6 +147,92 @@ ipcMain.handle("kinforge:get-app-info", event => {
   return { version: app.getVersion(), platform: process.platform, arch: process.arch, platformLabel: platformLabel(), monthlyUpdateCadenceDays: 30 };
 });
 
+function updateFormat(fileName) {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".dmg")) return "dmg";
+  if (lower.endsWith(".pkg")) return "pkg";
+  if (lower.endsWith(".zip")) return "zip";
+  if (lower.includes("portable") && lower.endsWith(".exe")) return "portable";
+  if (lower.includes("setup") && lower.endsWith(".exe")) return "setup";
+  if (lower.endsWith(".exe")) return "exe";
+  return "";
+}
+
+function updatePlatform(fileName) {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".exe")) return "Windows";
+  if (lower.includes("apple-silicon") || lower.includes("arm64")) return "Apple Silicon";
+  if (lower.includes("intel") || lower.includes("x64")) return "Intel";
+  return platformLabel();
+}
+
+function updateVersionFromPath(filePath) {
+  const parts = filePath.split(path.sep);
+  for (let index = parts.length - 1; index >= 0; index -= 1) {
+    if (/^\d+\.\d+\.\d+$/.test(parts[index])) return parts[index];
+  }
+  const match = path.basename(filePath).match(/-(\d+\.\d+\.\d+)-/);
+  return match?.[1] || "";
+}
+
+function listLocalUpdates(currentVersion = app.getVersion()) {
+  const roots = ensureKinForgeFolders();
+  const updatesRoot = roots.updatesRoot;
+  if (!fs.existsSync(updatesRoot)) return [];
+  const packages = [];
+  for (const versionFolder of fs.readdirSync(updatesRoot, { withFileTypes: true })) {
+    if (!versionFolder.isDirectory() || !/^\d+\.\d+\.\d+$/.test(versionFolder.name)) continue;
+    if (compareVersions(versionFolder.name, currentVersion) <= 0) continue;
+    const folderPath = path.join(updatesRoot, versionFolder.name);
+    for (const item of fs.readdirSync(folderPath, { withFileTypes: true })) {
+      if (!item.isFile()) continue;
+      const format = updateFormat(item.name);
+      if (!format) continue;
+      const filePath = path.join(folderPath, item.name);
+      const stat = fs.statSync(filePath);
+      packages.push({
+        id: crypto.createHash("sha256").update(filePath).digest("hex").slice(0, 16),
+        version: updateVersionFromPath(filePath) || versionFolder.name,
+        platform: updatePlatform(item.name),
+        format,
+        name: item.name,
+        size: stat.size,
+        sha256: "",
+        available: true,
+        localPath: filePath,
+        url: pathToFileURL(filePath).href
+      });
+    }
+  }
+  return packages.sort((a, b) => compareVersions(a.version, b.version) || a.platform.localeCompare(b.platform) || a.name.localeCompare(b.name));
+}
+
+function compareVersions(a, b) {
+  const left = String(a || "0").split(/[.-]/).map(part => Number.parseInt(part, 10) || 0);
+  const right = String(b || "0").split(/[.-]/).map(part => Number.parseInt(part, 10) || 0);
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const diff = (left[index] || 0) - (right[index] || 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
+}
+
+ipcMain.handle("kinforge:list-local-updates", event => {
+  trustedSender(event);
+  return listLocalUpdates(app.getVersion());
+});
+
+ipcMain.handle("kinforge:open-local-update", async (event, filePath) => {
+  trustedSender(event);
+  const roots = ensureKinForgeFolders();
+  const resolved = path.resolve(String(filePath || ""));
+  const root = path.resolve(roots.updatesRoot);
+  if (!resolved.startsWith(`${root}${path.sep}`)) throw new Error("KinForge refused to open an update outside the Updates folder.");
+  if (!fs.existsSync(resolved) || !updateFormat(path.basename(resolved))) throw new Error("That KinForge update package is not available.");
+  const error = await shell.openPath(resolved);
+  return { ok: !error, path: resolved, error: error || undefined };
+});
+
 ipcMain.handle("kinforge:download-update", async (event, value) => {
   trustedSender(event);
   const url = updateUrl(value);

@@ -167,3 +167,29 @@ export const supportReplies = sqliteTable("support_replies", {
 }, t => [
   index("support_replies_ticket").on(t.ticketId, t.createdAt)
 ]);
+
+export const accountModeration = sqliteTable("account_moderation", {
+  accountId: text("account_id").primaryKey().references(() => accounts.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("active"),
+  reason: text("reason"),
+  note: text("note"),
+  warnings: integer("warnings").notNull().default(0),
+  lastAction: text("last_action").notNull().default("active"),
+  updatedAt: integer("updated_at").notNull(),
+  updatedBy: text("updated_by").notNull().references(() => accounts.id)
+}, t => [
+  index("account_moderation_status").on(t.status, t.updatedAt)
+]);
+
+export const accountModerationEvents = sqliteTable("account_moderation_events", {
+  id: text("id").primaryKey(),
+  accountId: text("account_id").notNull().references(() => accounts.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  reason: text("reason"),
+  note: text("note"),
+  createdAt: integer("created_at").notNull(),
+  createdBy: text("created_by").notNull().references(() => accounts.id)
+}, t => [
+  index("account_moderation_events_account").on(t.accountId, t.createdAt),
+  index("account_moderation_events_created").on(t.createdAt)
+]);

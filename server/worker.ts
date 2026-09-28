@@ -17,6 +17,7 @@ type Env = DriveEnv & ReleaseEnv & {
 type Account = { id: string; email: string; name: string; password: string; recovery_hash: string };
 type Library = { id: string; owner_id: string; name: string; revision: number; object_key: string | null; updated_at: number; role: string };
 type AuthCodePurpose = "reset" | "login";
+type AccountModerationStatus = "active" | "warned" | "suspended" | "banned" | "terminated";
 const cookieName = "kinforge_session";
 const day = 86400000;
 const securityHeaders = {
@@ -118,6 +119,25 @@ const publicAccount = async (user: Account, env: Env) => {
   const ownerRole = await ownerAccessRole(env, user);
   return { id: user.id, email: user.email, name: user.name, ownerDashboard: !!ownerRole, ownerRole: ownerRole || undefined };
 };
+function normalizeModerationStatus(value: unknown): AccountModerationStatus {
+  if (value === "warned" || value === "suspended" || value === "banned" || value === "terminated") return value;
+  return "active";
+}
+function activeModerationStatus(value: unknown) {
+  return ["suspended", "banned", "terminated"].includes(String(value || ""));
+}
+async function accountModeration(env: Env, accountId: string) {
+  try {
+    return await env.DB.prepare("SELECT account_id AS accountId,status,reason,note,warnings,last_action AS lastAction,updated_at AS updatedAt,updated_by AS updatedBy FROM account_moderation WHERE account_id=? LIMIT 1").bind(accountId).first<Record<string, any>>();
+  } catch (error) {
+    if (tableMissing(error)) return null;
+    throw error;
+  }
+}
+async function enforceAccountActive(env: Env, user: Account) {
+  const moderation = await accountModeration(env, user.id);
+  if (moderation && activeModerationStatus(moderation.status)) throw new Problem(403, `This KinForge account is ${moderation.status}. Contact KinForge Support if you think this is a mistake.`);
+}
 function authCodePurpose(value: unknown): AuthCodePurpose {
   if (value === "reset" || value === "login") return value;
   throw new Problem(400, "Choose password reset or email-code login.");
@@ -333,7 +353,7 @@ async function fullOwnerOnly(env: Env, user: Account) {
   if (role !== "owner" && role !== "co-owner") throw new Problem(403, "Only owners and co-owners can manage this owner setting.");
 }
 function tableMissing(error: unknown) {
-  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies|owner_emails/i.test(error.message);
+  return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies|owner_emails|account_moderation|account_moderation_events/i.test(error.message);
 }
 async function ownerRevenue(env: Env) {
   try {
@@ -365,16 +385,17 @@ async function ownerEmailSummary(env: Env) {
 }
 async function ownerAccessSummary(env: Env) {
   try {
-    const [accounts, signups, subscribers, codes, ownerEmails] = await Promise.all([
-      env.DB.prepare("SELECT a.id,a.email,a.name,a.created_at AS createdAt FROM accounts a ORDER BY a.created_at DESC LIMIT 500").all(),
+    const [accounts, signups, subscribers, codes, ownerEmails, moderationEvents] = await Promise.all([
+      env.DB.prepare("SELECT a.id,a.email,a.name,a.created_at AS createdAt,COALESCE(m.status,'active') AS moderationStatus,m.reason AS moderationReason,m.note AS moderationNote,COALESCE(m.warnings,0) AS warnings,m.last_action AS moderationLastAction,m.updated_at AS moderationUpdatedAt,owner.email AS moderationUpdatedByEmail FROM accounts a LEFT JOIN account_moderation m ON m.account_id=a.id LEFT JOIN accounts owner ON owner.id=m.updated_by ORDER BY a.created_at DESC LIMIT 500").all(),
       env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,a.created_at AS accountCreatedAt,b.plan,b.interval,b.discount_code AS discountCode,b.created_at AS createdAt,b.updated_at AS updatedAt FROM beta_interests b JOIN accounts a ON a.id=b.account_id ORDER BY b.updated_at DESC LIMIT 250").all(),
       env.DB.prepare("SELECT a.id AS accountId,a.email,a.name,COALESCE(s.status,'subscribed') AS status,COALESCE(s.source,CASE WHEN b.account_id IS NOT NULL THEN 'beta-interest' ELSE 'account' END) AS source,COALESCE(s.created_at,a.created_at) AS createdAt,COALESCE(s.updated_at,a.created_at) AS updatedAt FROM accounts a LEFT JOIN beta_interests b ON b.account_id=a.id LEFT JOIN newsletter_subscribers s ON s.account_id=a.id WHERE COALESCE(s.status,'subscribed')='subscribed' ORDER BY COALESCE(s.updated_at,a.created_at) DESC LIMIT 500").all(),
       env.DB.prepare("SELECT c.hash,c.label,c.recipient_email AS recipientEmail,c.note,c.created_at AS createdAt,c.expires_at AS expiresAt,c.max_uses AS maxUses,c.use_count AS useCount,c.revoked_at AS revokedAt,c.last_redeemed_at AS lastRedeemedAt,a.email AS lastRedeemedByEmail FROM special_access_codes c LEFT JOIN accounts a ON a.id=c.last_redeemed_by ORDER BY c.created_at DESC LIMIT 250").all(),
-      ownerEmailSummary(env)
+      ownerEmailSummary(env),
+      env.DB.prepare("SELECT e.id,e.account_id AS accountId,a.email,a.name,e.action,e.reason,e.note,e.created_at AS createdAt,owner.email AS createdByEmail FROM account_moderation_events e JOIN accounts a ON a.id=e.account_id JOIN accounts owner ON owner.id=e.created_by ORDER BY e.created_at DESC LIMIT 250").all()
     ]);
-    return json({ setupRequired: !!ownerEmails.setupRequired, accounts: accounts.results, signups: signups.results, subscribers: subscribers.results, codes: codes.results, ownerEmails });
+    return json({ setupRequired: !!ownerEmails.setupRequired, accounts: accounts.results, signups: signups.results, subscribers: subscribers.results, codes: codes.results, ownerEmails, moderationEvents: moderationEvents.results });
   } catch (error) {
-    if (tableMissing(error)) return json({ setupRequired: true, accounts: [], signups: [], subscribers: [], codes: [], ownerEmails: { envEmails: [], managedEmails: [], setupRequired: true } });
+    if (tableMissing(error)) return json({ setupRequired: true, accounts: [], signups: [], subscribers: [], codes: [], ownerEmails: { envEmails: [], managedEmails: [], setupRequired: true }, moderationEvents: [] });
     throw error;
   }
 }
@@ -392,6 +413,30 @@ async function revokeOwnerEmail(env: Env, request: Request, user: Account) {
   if (email === user.email.toLowerCase() && ownerEmails(env).includes(email)) throw new Problem(400, "This bootstrap owner email comes from the deployment environment and cannot be revoked inside the app.");
   await env.DB.prepare("UPDATE owner_emails SET revoked_at=? WHERE lower(email)=?").bind(Date.now(), email).run();
   return json({ ok: true, email });
+}
+async function moderateAccount(env: Env, request: Request, user: Account, accountId: string) {
+  const data = await body(request, 16384);
+  const action = normalizeModerationStatus(data.action);
+  if (action === "active" && data.action !== "active") throw new Problem(400, "Choose warn, suspend, ban, terminate, or reactivate.");
+  const target = await env.DB.prepare("SELECT id,email,name FROM accounts WHERE id=?").bind(accountId).first<Account>();
+  if (!target) throw new Problem(404, "That KinForge account was not found.");
+  if (target.id === user.id && activeModerationStatus(action)) throw new Problem(400, "You cannot suspend, ban, or terminate your own owner session.");
+  const targetRole = await ownerAccessRole(env, target);
+  const actorRole = await ownerAccessRole(env, user);
+  if (targetRole === "owner" && actorRole !== "owner") throw new Problem(403, "Only an owner can moderate another owner account.");
+  const now = Date.now();
+  const reason = String(data.reason || "").trim().slice(0, 240) || (action === "active" ? "Owner reactivated this account." : "Owner moderation action.");
+  const note = String(data.note || "").trim().slice(0, 4000);
+  const warningsIncrement = action === "warned" ? 1 : 0;
+  const eventId = crypto.randomUUID();
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO account_moderation (account_id,status,reason,note,warnings,last_action,updated_at,updated_by) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(account_id) DO UPDATE SET status=excluded.status,reason=excluded.reason,note=excluded.note,warnings=account_moderation.warnings+?,last_action=excluded.last_action,updated_at=excluded.updated_at,updated_by=excluded.updated_by")
+      .bind(accountId, action, reason, note, warningsIncrement, action, now, user.id, warningsIncrement),
+    env.DB.prepare("INSERT INTO account_moderation_events (id,account_id,action,reason,note,created_at,created_by) VALUES (?,?,?,?,?,?,?)")
+      .bind(eventId, accountId, action, reason, note, now, user.id)
+  ]);
+  if (activeModerationStatus(action)) await env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(accountId).run();
+  return json({ ok: true, accountId, action, reason, note, createdAt: now });
 }
 async function ownerNewsletterSummary(env: Env) {
   try {
@@ -620,6 +665,7 @@ async function currentAccount(env: Env, request: Request) {
   if (!/^[a-f0-9]{64}$/.test(token)) throw new Problem(401, "Sign in to your KinForge account.");
   const user = await env.DB.prepare("SELECT a.* FROM accounts a JOIN sessions s ON s.user_id=a.id WHERE s.hash=? AND s.expires_at>?").bind(await digest(token), Date.now()).first<Account>();
   if (!user) throw new Problem(401, "Your session has expired. Sign in again; your device changes are kept.");
+  await enforceAccountActive(env, user);
   return user;
 }
 async function library(env: Env, id: string, user: Account, edit = false, owner = false) {
@@ -649,7 +695,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
   if (method !== "GET" && method !== "HEAD") {
     if (request.headers.get("X-KinForge-Client") !== "1" || (request.headers.get("origin") && request.headers.get("origin") !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Problem(403, "This request must come from KinForge.");
   }
-  if (path === "/api/health") return json({ ok: true, version: "1.5.9" });
+  if (path === "/api/health") return json({ ok: true, version: "1.6.0" });
   if (path === "/api/support" && method === "POST") {
     const data = await body(request, 32768);
     await rateLimit(env, request, "support", 8, 60 * 60000, String(data.email || ""));
@@ -706,6 +752,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     const password = typeof data.password === "string" ? data.password.slice(0, 256) : "";
     const encoded = user?.password || `scrypt-v1:${"0".repeat(64)}:${"0".repeat(64)}`;
     if (!await verifyPassword(password, encoded) || !user) throw new Problem(401, "The email or password did not match.");
+    await enforceAccountActive(env, user);
     return json({ user: await publicAccount(user, env) }, 200, { "Set-Cookie": cookie(await sessionToken(env, user.id), request) });
   }
   if (path === "/api/auth/code/request" && method === "POST") {
@@ -718,6 +765,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     await rateLimit(env, request, `auth-code-confirm-${purpose}`, 10, 15 * 60000, email);
     const user = await env.DB.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first<Account>();
     if (!user || !await consumeAuthCode(env, user, purpose, data.code)) throw new Problem(400, "The email or code did not match.");
+    await enforceAccountActive(env, user);
     if (purpose === "reset") {
       const recoveryCode = secret(); const nextHash = await passwordHash(validPassword(data.password));
       await env.DB.batch([
@@ -734,6 +782,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     await rateLimit(env, request, "recover", 5, 60 * 60000, email);
     const user = await env.DB.prepare("SELECT * FROM accounts WHERE email=?").bind(email).first<Account>();
     if (!user || !equal(await digest(String(data.recoveryCode || "").trim()), user.recovery_hash)) throw new Problem(400, "The email or recovery code did not match.");
+    await enforceAccountActive(env, user);
     const recoveryCode = secret(); const nextHash = await passwordHash(password);
     await env.DB.batch([
       env.DB.prepare("UPDATE accounts SET password=?,recovery_hash=? WHERE id=?").bind(nextHash, await digest(recoveryCode), user.id),
@@ -781,6 +830,12 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     await fullOwnerOnly(env, user);
     await rateLimit(env, request, "owner-emails-revoke", 80, 60 * 60000, user.id);
     return revokeOwnerEmail(env, request, user);
+  }
+  const moderationAction = /^\/api\/owner\/accounts\/([a-f0-9-]+)\/moderation$/.exec(path);
+  if (moderationAction && method === "POST") {
+    await fullOwnerOnly(env, user);
+    await rateLimit(env, request, "owner-account-moderation", 120, 60 * 60000, user.id);
+    return moderateAccount(env, request, user, moderationAction[1]);
   }
   if (path === "/api/owner/newsletters" && method === "GET") {
     await ownerOnly(env, user);

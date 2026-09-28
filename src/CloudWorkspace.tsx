@@ -204,13 +204,14 @@ function formatValue(value: unknown) { if (value === undefined) return "Deleted"
 type RevenueTotal = { currency: string; gross: number; fees: number; net: number; payments: number };
 type RevenueEvent = { id: string; provider: string; source: string; status: string; product: string; tier?: string; customerEmail?: string; customerName?: string; currency: string; amount: number; fee: number; net: number; paidAt: number; createdAt: number };
 type RevenueSummary = { setupRequired: boolean; totals: RevenueTotal[]; recent: RevenueEvent[]; betaInterestCount: number; accountCount: number };
-type OwnerAccount = { id: string; email: string; name: string; createdAt: number };
+type OwnerAccount = { id: string; email: string; name: string; createdAt: number; moderationStatus?: string; moderationReason?: string; moderationNote?: string; warnings?: number; moderationLastAction?: string; moderationUpdatedAt?: number; moderationUpdatedByEmail?: string };
 type BetaSignup = { accountId: string; email: string; name: string; accountCreatedAt: number; plan: string; interval: string; discountCode?: string; createdAt: number; updatedAt: number };
 type NewsletterSubscriber = { accountId: string; email: string; name: string; status: string; source: string; createdAt?: number; updatedAt: number };
 type NewsletterRelease = { id: string; title: string; subject: string; summary?: string; status: string; objectKey: string; attachmentCount: number; size: number; createdAt: number; releasedAt?: number; recipientCount: number; deliveryStatus: string };
 type SpecialAccessCode = { hash: string; label: string; recipientEmail?: string; note?: string; createdAt: number; expiresAt?: number; maxUses: number; useCount: number; revokedAt?: number; lastRedeemedAt?: number; lastRedeemedByEmail?: string };
 type OwnerEmailEntry = { email: string; role: string; source?: string; createdBy?: string; createdAt?: number; revokedAt?: number };
-type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[]; ownerEmails?: { envEmails: OwnerEmailEntry[]; managedEmails: OwnerEmailEntry[]; setupRequired?: boolean } };
+type ModerationEvent = { id: string; accountId: string; email: string; name: string; action: string; reason?: string; note?: string; createdAt: number; createdByEmail: string };
+type OwnerAccessSummary = { setupRequired: boolean; accounts: OwnerAccount[]; signups: BetaSignup[]; subscribers: NewsletterSubscriber[]; codes: SpecialAccessCode[]; moderationEvents?: ModerationEvent[]; ownerEmails?: { envEmails: OwnerEmailEntry[]; managedEmails: OwnerEmailEntry[]; setupRequired?: boolean } };
 type OwnerNewsletterSummary = { setupRequired: boolean; subscribers: NewsletterSubscriber[]; releases: NewsletterRelease[] };
 type SupportTicket = { id: string; type: string; subject: string; name?: string; email?: string; message: string; device?: string; treeTitle?: string; proof?: string; permissionToReply: number | boolean; diagnostics?: string; status: string; priority: string; deliveryStatus: string; createdAt: number; updatedAt: number; lastReplyAt?: number };
 type SupportReply = { id: string; ticketId: string; authorEmail: string; message: string; deliveryStatus: string; createdAt: number };
@@ -230,14 +231,14 @@ function OwnerConsoleDialog({ user, ownerSurface, onClose, onOpenRevenue, onOpen
     { title: "Revenue dashboard", detail: "Review gross, fees, net earnings, currency totals, account counts and recent payment history.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue, allowed: true },
     { title: "Feedback and support tickets", detail: "Open, prioritise, reply to, resolve and close app feedback, support forms, quote requests, discount requests and customer enquiries.", icon: <ClipboardList size={18} />, action: onOpenSupport, allowed: true },
     { title: "Website control", detail: canManageWebsite ? "Review public, owner and Special Access websites, draft website update briefs, and keep downloads/pages aligned." : "Owner and co-owner only. Admin accounts cannot manage websites.", icon: <Globe2 size={18} />, action: onOpenWebsite, allowed: canManageWebsite },
-    { title: "Accounts and Special Access", detail: "See signups, subscribers, beta interest, redeemed codes, and manage Special Access codes. Owner/co-owner accounts can also manage owner roles.", icon: <KeyRound size={18} />, action: onOpenAccess, allowed: true },
+    { title: "Accounts, moderation and Special Access", detail: "See signups, subscribers, beta interest, warnings, suspensions, bans, terminations, redeemed codes and Special Access codes. Owner/co-owner accounts can manage owner roles and account safety actions.", icon: <KeyRound size={18} />, action: onOpenAccess, allowed: true },
     { title: "Newsletters", detail: "Release newsletters to subscribers, attach files, and keep a record of released messages.", icon: <Mail size={18} />, action: onOpenNewsletter, allowed: true }
   ];
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-console" role="dialog" aria-modal="true" aria-labelledby="owner-console-title">
     <button className="cloud-close" aria-label="Close owner console" onClick={onClose}><X size={20} /></button>
     <p className="eyebrow">Owner site</p>
     <h2 id="owner-console-title"><Crown size={22} />KinForge Owner Console</h2>
-    <p className="quiet">This is the private business-control area for the owner site: payments, revenue, user feedback, support requests, website control, special access, accounts and newsletters.</p>
+    <p className="quiet">This is the private business-control area for the owner site: payments, revenue, user feedback, support requests, website control, account warnings and bans, special access, accounts and newsletters.</p>
     {!ownerReady && <div className="auth-message bad" role="alert">
       <strong>Owner permissions are not active for this signed-in account.</strong>
       <span> You are on {ownerSurface ? "the owner site" : "a non-owner surface"}, but the cloud account did not return owner-dashboard access. Sign in with the owner email configured in <code>KINFORGE_OWNER_EMAILS</code>, <code>KINFORGE_ADMIN_EMAILS</code>, or <code>OWNER_EMAILS</code> so the private tools can load.</span>
@@ -251,7 +252,7 @@ function OwnerConsoleDialog({ user, ownerSurface, onClose, onOpenRevenue, onOpen
     </div>
     <section className="owner-special-sync" aria-labelledby="owner-console-note">
       <h3 id="owner-console-note"><ShieldCheck size={17} />What should appear here</h3>
-      <p>When the owner account is active, this console opens the payment ledger, revenue totals, customer feedback, support ticket forum, public/Special Access website control, special access code creator, subscriber list and newsletter release tools.</p>
+      <p>When the owner account is active, this console opens the payment ledger, revenue totals, customer feedback, support ticket forum, public/Special Access website control, account warning and ban controls, special access code creator, subscriber list and newsletter release tools.</p>
     </section>
   </section></div>;
 }
@@ -323,6 +324,7 @@ function OwnerAccessDialog({ canManageOwnerRoles, onClose }: { canManageOwnerRol
   const [createdCode, setCreatedCode] = useState("");
   const [form, setForm] = useState({ label: "Special access edition", recipientEmail: "", code: "", maxUses: "1", expiresAt: "", note: "" });
   const [ownerEmailForm, setOwnerEmailForm] = useState({ email: "", role: "owner" });
+  const [moderationForm, setModerationForm] = useState({ accountId: "", action: "warned", reason: "", note: "" });
   async function refresh() {
     setMessage("");
     const data = await cloudRequest<OwnerAccessSummary>("/api/owner/access");
@@ -373,6 +375,21 @@ function OwnerAccessDialog({ canManageOwnerRoles, onClose }: { canManageOwnerRol
       setMessage(error instanceof Error ? error.message : "Could not revoke that owner email.");
     } finally { setBusy(false); }
   }
+  async function moderateSelectedAccount() {
+    if (!moderationForm.accountId) return;
+    setBusy(true); setMessage("");
+    try {
+      const selectedAccount = summary?.accounts.find(account => account.id === moderationForm.accountId);
+      await cloudRequest(`/api/owner/accounts/${moderationForm.accountId}/moderation`, "POST", moderationForm);
+      await refresh();
+      setMessage(`${selectedAccount?.email || "Account"} moderation updated: ${moderationForm.action}.`);
+      setModerationForm(previous => ({ ...previous, reason: "", note: "" }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not update that account.");
+    } finally { setBusy(false); }
+  }
+  const activeModerations = summary?.accounts.filter(account => ["suspended", "banned", "terminated"].includes(account.moderationStatus || "")).length ?? 0;
+  const warningCount = summary?.accounts.reduce((total, account) => total + (Number(account.warnings) || 0), 0) ?? 0;
   async function copyCode() {
     if (!createdCode) return;
     try { await navigator.clipboard.writeText(createdCode); setMessage("Special access code copied."); }
@@ -399,8 +416,8 @@ function OwnerAccessDialog({ canManageOwnerRoles, onClose }: { canManageOwnerRol
   }
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-access" role="dialog" aria-modal="true" aria-labelledby="owner-access-title">
     <button className="cloud-close" aria-label="Close special access" onClick={onClose}><X size={20} /></button>
-    <h2 id="owner-access-title">Signups, access & owner roles</h2>
-    <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow, so the Special Access version can be managed from inside your owner app.</p>
+    <h2 id="owner-access-title">Signups, access, moderation & owner roles</h2>
+    <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow, so the Special Access version, account warnings, bans, terminations and owner roles can be managed from inside your owner app.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The special-access table is not active on this deployment yet. Publish the latest build or run the database migration.</p>}
     <div className="revenue-metrics">
       <article><span>Accounts</span><strong>{summary?.accounts.length ?? "..."}</strong><small>All KinForge accounts in this cloud database</small></article>
@@ -408,7 +425,33 @@ function OwnerAccessDialog({ canManageOwnerRoles, onClose }: { canManageOwnerRol
       <article><span>Subscribers</span><strong>{summary?.subscribers.length ?? "..."}</strong><small>Accounts included in owner newsletter releases</small></article>
       <article><span>Access codes</span><strong>{summary?.codes.length ?? "..."}</strong><small>Manual owner-created special access codes</small></article>
       <article><span>Redeemed</span><strong>{summary ? summary.codes.filter(code => code.useCount > 0).length : "..."}</strong><small>Codes already used by signed-in accounts</small></article>
+      <article><span>Warnings</span><strong>{summary ? warningCount : "..."}</strong><small>Owner-issued account warnings</small></article>
+      <article><span>Restricted</span><strong>{summary ? activeModerations : "..."}</strong><small>Suspended, banned or terminated accounts</small></article>
     </div>
+    <section className="owner-revenue-entry" aria-labelledby="moderation-title">
+      <h3 id="moderation-title"><ShieldCheck size={17} />Account warnings, bans and termination</h3>
+      <p className="quiet">Owners and co-owners can warn accounts, suspend access, ban accounts, terminate accounts, or reactivate them. Active suspensions, bans and terminations immediately remove sessions and block sign-in until reactivated.</p>
+      {!canManageOwnerRoles && <p className="auth-message bad" role="note">Admin accounts can review moderation status and history, but only owners and co-owners can change account access.</p>}
+      {canManageOwnerRoles && <>
+        <div className="revenue-form-grid">
+          <label className="field"><span>Account</span><select className="control" value={moderationForm.accountId} onChange={event => setModerationForm({ ...moderationForm, accountId: event.target.value })}><option value="">Choose an account</option>{summary?.accounts.map(account => <option key={account.id} value={account.id}>{account.email} - {account.moderationStatus || "active"}</option>)}</select></label>
+          <label className="field"><span>Action</span><select className="control" value={moderationForm.action} onChange={event => setModerationForm({ ...moderationForm, action: event.target.value })}><option value="warned">Send warning</option><option value="suspended">Suspend account</option><option value="banned">Ban account</option><option value="terminated">Terminate account</option><option value="active">Reactivate account</option></select></label>
+          <label className="field"><span>Reason</span><input className="control" value={moderationForm.reason} onChange={event => setModerationForm({ ...moderationForm, reason: event.target.value })} placeholder="Policy, payment, safety, misuse, duplicate account..." /></label>
+          <label className="field"><span>Owner note</span><input className="control" value={moderationForm.note} onChange={event => setModerationForm({ ...moderationForm, note: event.target.value })} placeholder="Internal context for future owner/admin review" /></label>
+        </div>
+        <div className="button-row"><button className="button" disabled={busy || !moderationForm.accountId} onClick={() => void moderateSelectedAccount()}><ShieldCheck size={16} />Apply account action</button></div>
+      </>}
+      <div className="owner-access-columns">
+        <div>
+          <h3><UsersRound size={17} />Account status</h3>
+          <div className="revenue-list owner-access-list">{summary?.accounts.length ? summary.accounts.map(account => <div className="cloud-member" key={`moderation-${account.id}`}><span><strong>{account.name || account.email}</strong><small>{account.email} · {account.moderationStatus || "active"} · warnings {account.warnings || 0}{account.moderationUpdatedAt ? ` · updated ${new Date(account.moderationUpdatedAt).toLocaleString()}` : ""}</small>{account.moderationReason && <small>Reason: {account.moderationReason}</small>}</span></div>) : <p className="quiet">No accounts have signed up yet.</p>}</div>
+        </div>
+        <div>
+          <h3><ClipboardList size={17} />Moderation history</h3>
+          <div className="revenue-list owner-access-list">{summary?.moderationEvents?.length ? summary.moderationEvents.map(event => <div className="cloud-member" key={event.id}><span><strong>{event.action} · {event.email}</strong><small>{new Date(event.createdAt).toLocaleString()} · by {event.createdByEmail}</small>{event.reason && <small>Reason: {event.reason}</small>}</span></div>) : <p className="quiet">No account warnings, bans or termination actions have been recorded yet.</p>}</div>
+        </div>
+      </div>
+    </section>
     <section className="owner-special-sync" aria-labelledby="special-sync-title">
       <h3 id="special-sync-title"><ShieldCheck size={17} />Special Access project sync</h3>
       <p>The owner app is the control room for the Special Access version: create a code, optionally lock it to a friend's email, track whether it was redeemed, revoke access codes, and copy a ready-to-send invite message without exposing the owner dashboard to ordinary users.</p>

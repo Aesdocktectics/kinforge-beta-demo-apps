@@ -100,6 +100,28 @@ test("owner can see accounts and release newsletters to subscribers", async () =
   assert.equal(newsletters.status, 200, JSON.stringify(newsletters.body));
   assert.ok(newsletters.body.releases.some(item => item.title === "Owner update" && item.deliveryStatus === "sent"));
 });
+test("owner can warn, ban and reactivate accounts", async () => {
+  const first = await call(`/api/owner/accounts/${other.body.user.id}/moderation`, "POST", { action: "warned", reason: "Policy reminder", note: "First warning from owner console" }, owner.cookie);
+  assert.equal(first.status, 200, JSON.stringify(first.body));
+  let access = await call("/api/owner/access", "GET", undefined, owner.cookie);
+  const warned = access.body.accounts.find(account => account.email === "other@example.test");
+  assert.equal(warned.moderationStatus, "warned");
+  assert.equal(warned.warnings, 1);
+  assert.ok(access.body.moderationEvents.some(event => event.email === "other@example.test" && event.action === "warned"));
+
+  const banned = await call(`/api/owner/accounts/${other.body.user.id}/moderation`, "POST", { action: "banned", reason: "Repeated misuse", note: "Blocks sign-in and clears sessions" }, owner.cookie);
+  assert.equal(banned.status, 200, JSON.stringify(banned.body));
+  assert.equal((await call("/api/libraries", "GET", undefined, other.cookie)).status, 401);
+  assert.equal((await call("/api/auth/login", "POST", { email: "other@example.test", password: "Test-library-password-42" })).status, 403);
+
+  const reactivated = await call(`/api/owner/accounts/${other.body.user.id}/moderation`, "POST", { action: "active", reason: "Owner approved reactivation" }, owner.cookie);
+  assert.equal(reactivated.status, 200, JSON.stringify(reactivated.body));
+  const login = await call("/api/auth/login", "POST", { email: "other@example.test", password: "Test-library-password-42" });
+  assert.equal(login.status, 200, JSON.stringify(login.body));
+  other.cookie = login.cookie;
+  access = await call("/api/owner/access", "GET", undefined, owner.cookie);
+  assert.equal(access.body.accounts.find(account => account.email === "other@example.test").moderationStatus, "active");
+});
 test("whole library including reports, collections, subcollections and books survives another session", async () => {
   fixture.books.push({ id: "book_extra", title: "Archive", description: "A second book" });
   fixture.collections.push({ id: "sub", bookId: fixture.books[0].id, parentId: fixture.collections[0].id, name: "Nested collection" });
