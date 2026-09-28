@@ -1,0 +1,28 @@
+{
+  "version": "1.6.0",
+  "slug": "beta-demo-apps",
+  "title": "Beta and Demo Apps",
+  "audience": "Beta testers, friends, demo users and evaluators",
+  "site": "Public beta page and demo onboarding",
+  "app": "Beta preview, demo web app and downloadable preview channel",
+  "access": "Beta interest registration or demo mode; safe-library guidance",
+  "releaseSource": {
+    "ownerPullRequest": "https://github.com/Aesdocktectics/kinforge-genealogy-studio/pull/19",
+    "ownerBranch": "codex/kinforge-owner-1.6.0",
+    "manifest": "server/releaseManifest.ts",
+    "updateFolder": "Downloads/KinForge Genealogy Studio Supreme Suite/Updates/1.6.0"
+  },
+  "packages": [
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-Apple-Silicon.dmg",
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-Apple-Silicon.pkg",
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-Intel.dmg",
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-Intel.pkg",
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-x64-setup.exe",
+    "KinForge Genealogy Studio Supreme Suite-1.6.0-x64-portable.exe"
+  ],
+  "requirements": [
+    "Connect 1.6.0 baseline packages to beta/demo notices",
+    "Keep beta separate from stable libraries with backup guidance",
+    "Do not show fake newer updates unless a verified beta package exists"
+  ]
+}
