@@ -1892,7 +1892,7 @@ Quality checklist:
       const result = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(result.error || "The support request could not be sent.");
       setSupportMessage(result.message || "Support request prepared.");
-      if (result.delivery !== "sent-to-serene-relay") downloadSupportTicket();
+      if (result.delivery !== "sent-to-kinforge-support") downloadSupportTicket();
     } catch (error) {
       setSupportMessage(error instanceof Error ? `${error.message} Downloading the support request instead.` : "Support delivery failed. Downloading the support request instead.");
       downloadSupportTicket();
@@ -3302,7 +3302,7 @@ Quality checklist:
       <div className="two-col">
         <Section title="How Support Works" icon={<CircleHelp size={18} />}>
           <div className="coverage-table">
-            <div className="coverage-row"><Badge>Support</Badge><strong>Support Form</strong><span>Creates a support ticket and sends it to Serene Relay when the secure relay endpoint is configured.</span><StatusBadge status="validated" /></div>
+            <div className="coverage-row"><Badge>Support</Badge><strong>Support Form</strong><span>Creates a support ticket for KinForge Support and keeps an owner-dashboard copy for follow-up.</span><StatusBadge status="validated" /></div>
             <div className="coverage-row"><Badge>AI</Badge><strong>Helpdesk AI</strong><span>Explains what to try next, drafts bug reports, and turns feedback into QA steps without changing tree data.</span><StatusBadge status="validated" /></div>
             <div className="coverage-row"><Badge>Privacy</Badge><strong>Private details</strong><span>Do not paste passwords, recovery codes, medical files, government records, or private family records into public support text.</span><StatusBadge status="validated" /></div>
           </div>
@@ -3310,8 +3310,8 @@ Quality checklist:
         <Section title="Contact Details" icon={<Languages size={18} />}>
           <p><strong>Product:</strong> KinForge Genealogy Studio</p>
           <p><strong>Owner brand:</strong> Dreams of Serene Landscapes</p>
-          <p><strong>Support destination:</strong> Serene Relay support intake when configured for this deployment.</p>
-          <p className="quiet">If Serene Relay delivery is not configured, KinForge downloads the support request as a text file so you can send it manually and nothing disappears.</p>
+          <p><strong>Support destination:</strong> KinForge Support owner dashboard.</p>
+          <p className="quiet">If automatic delivery is not configured, KinForge saves the ticket and downloads a support copy so nothing disappears.</p>
         </Section>
       </div>
     </div>
@@ -3326,7 +3326,7 @@ Quality checklist:
           <p>Send a KinForge support request through the app support channel. This is app-level support, not a family-tree record.</p>
         </div>
         <div className="hero-actions">
-          <Badge>Serene Relay intake</Badge>
+          <Badge>KinForge Support</Badge>
           <Button icon={<Download size={16} />} onClick={downloadSupportTicket}>Download ticket</Button>
         </div>
       </div>
@@ -3351,7 +3351,7 @@ Quality checklist:
         </Section>
         <Section title="Support Preview" icon={<FileText size={18} />}>
           <textarea className="textarea ai-output" readOnly aria-label="Support ticket preview" value={supportTicketText()} />
-          <p className="quiet">The preview is the support packet KinForge sends to the configured Serene Relay support intake. Passwords, recovery codes, and private records should stay out of support messages.</p>
+          <p className="quiet">The preview is the support packet KinForge saves for KinForge Support. Passwords, recovery codes, and private records should stay out of support messages.</p>
         </Section>
       </div>
     </div>
