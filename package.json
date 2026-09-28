@@ -33,7 +33,7 @@
     "@tiptap/pm": "^3.31.3",
     "@tiptap/react": "^3.31.3",
     "@tiptap/starter-kit": "^3.31.3",
-    "@vitejs/plugin-react": "^5.0.3",
+    "@vitejs/plugin-react": "^6.1.1",
     "@xyflow/react": "^12.11.6",
     "calendariale": "^0.7.0",
     "d3-geo": "^3.1.1",
