@@ -89,18 +89,35 @@ function ownerEmails(env: Env) {
     .map(email => email.trim().toLowerCase())
     .filter(Boolean);
 }
-async function isOwnerAccount(env: Env, user: Account) {
-  const owners = ownerEmails(env);
-  if (owners.length > 0 && owners.includes(user.email.toLowerCase())) return true;
+function ownerRoleFromEmail(env: Env, email: string): "owner" | "co-owner" | "admin" | "" {
+  const normalized = email.toLowerCase();
+  const ownerEnvEmails = [env.KINFORGE_OWNER_EMAILS, env.OWNER_EMAILS].flatMap(value => String(value || "").split(",")).map(item => item.trim().toLowerCase()).filter(Boolean);
+  const adminEnvEmails = String(env.KINFORGE_ADMIN_EMAILS || "").split(",").map(item => item.trim().toLowerCase()).filter(Boolean);
+  if (ownerEnvEmails.includes(normalized)) return "owner";
+  if (adminEnvEmails.includes(normalized)) return "admin";
+  return "";
+}
+function normalizeOwnerRole(value: unknown): "owner" | "co-owner" | "admin" {
+  return value === "co-owner" || value === "admin" ? value : "owner";
+}
+async function ownerAccessRole(env: Env, user: Account): Promise<"owner" | "co-owner" | "admin" | ""> {
+  const envRole = ownerRoleFromEmail(env, user.email);
+  if (envRole) return envRole;
   try {
-    const managed = await env.DB.prepare("SELECT email FROM owner_emails WHERE lower(email)=? AND revoked_at IS NULL LIMIT 1").bind(user.email.toLowerCase()).first<{ email: string }>();
-    return !!managed;
+    const managed = await env.DB.prepare("SELECT role FROM owner_emails WHERE lower(email)=? AND revoked_at IS NULL LIMIT 1").bind(user.email.toLowerCase()).first<{ role: string }>();
+    return managed ? normalizeOwnerRole(managed.role) : "";
   } catch (error) {
-    if (tableMissing(error)) return false;
+    if (tableMissing(error)) return "";
     throw error;
   }
 }
-const publicAccount = async (user: Account, env: Env) => ({ id: user.id, email: user.email, name: user.name, ownerDashboard: await isOwnerAccount(env, user) });
+async function isOwnerAccount(env: Env, user: Account) {
+  return !!await ownerAccessRole(env, user);
+}
+const publicAccount = async (user: Account, env: Env) => {
+  const ownerRole = await ownerAccessRole(env, user);
+  return { id: user.id, email: user.email, name: user.name, ownerDashboard: !!ownerRole, ownerRole: ownerRole || undefined };
+};
 function authCodePurpose(value: unknown): AuthCodePurpose {
   if (value === "reset" || value === "login") return value;
   throw new Problem(400, "Choose password reset or email-code login.");
@@ -309,7 +326,11 @@ async function createStripeQuoteOrDiscountRequest(env: Env, request: Request, us
   }, stripeCustomerId ? 201 : 202);
 }
 async function ownerOnly(env: Env, user: Account) {
-  if (!await isOwnerAccount(env, user)) throw new Problem(403, "This owner area is private.");
+  if (!await ownerAccessRole(env, user)) throw new Problem(403, "This owner area is private.");
+}
+async function fullOwnerOnly(env: Env, user: Account) {
+  const role = await ownerAccessRole(env, user);
+  if (role !== "owner" && role !== "co-owner") throw new Problem(403, "Only owners and co-owners can manage this owner setting.");
 }
 function tableMissing(error: unknown) {
   return error instanceof Error && /no such table|payment_events|special_access_codes|newsletter_subscribers|newsletter_releases|support_tickets|support_replies|owner_emails/i.test(error.message);
@@ -360,7 +381,7 @@ async function ownerAccessSummary(env: Env) {
 async function addOwnerEmail(env: Env, request: Request, user: Account) {
   const data = await body(request, 8192);
   const email = emailAddress(data.email);
-  const role = data.role === "admin" ? "admin" : "owner";
+  const role = normalizeOwnerRole(data.role);
   await env.DB.prepare("INSERT INTO owner_emails (email,role,created_by,created_at,revoked_at) VALUES (?,?,?,?,NULL) ON CONFLICT(email) DO UPDATE SET role=excluded.role,created_by=excluded.created_by,created_at=excluded.created_at,revoked_at=NULL")
     .bind(email, role, user.id, Date.now()).run();
   return json({ ok: true, email, role }, 201);
@@ -752,12 +773,12 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     return ownerAccessSummary(env);
   }
   if (path === "/api/owner/emails" && method === "POST") {
-    await ownerOnly(env, user);
+    await fullOwnerOnly(env, user);
     await rateLimit(env, request, "owner-emails", 80, 60 * 60000, user.id);
     return addOwnerEmail(env, request, user);
   }
   if (path === "/api/owner/emails/revoke" && method === "POST") {
-    await ownerOnly(env, user);
+    await fullOwnerOnly(env, user);
     await rateLimit(env, request, "owner-emails-revoke", 80, 60 * 60000, user.id);
     return revokeOwnerEmail(env, request, user);
   }

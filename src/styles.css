@@ -1076,6 +1076,25 @@ a {
   max-height: 300px;
 }
 
+.owner-role-guide {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 10px 0;
+}
+
+.owner-role-guide span {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+  padding: 9px;
+}
+
+.owner-role-guide strong {
+  color: var(--ink);
+}
+
 .owner-website {
   max-width: min(1120px, 96vw);
 }

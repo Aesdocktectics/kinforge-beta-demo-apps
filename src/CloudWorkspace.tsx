@@ -121,12 +121,14 @@ export default function CloudWorkspace() {
   if (checking) return <div className="cloud-loading" role="status">Connecting to your KinForge account...</div>;
   if (!user) return <CloudSignIn error={error} onSignedIn={(account, code) => { setUser(account); setRecovery(code || ""); setError(""); }} onDemo={() => { const state = demoState(); localStorage.setItem("kinforge-demo-v1", JSON.stringify(state)); setDemo(state); sessionStorage.setItem("kinforge-demo-session", "true"); setError(""); }} />;
   const ownerToolsAvailable = !!user.ownerDashboard || ownerSurface;
+  const ownerRole = user.ownerRole || (ownerSurface ? "owner" : undefined);
+  const canManageWebsite = ownerRole === "owner" || ownerRole === "co-owner";
   const ownerNavigation = (user.ownerDashboard || ownerSurface) ? <div className="owner-nav-section" aria-label="Owner tools">
     <span className="owner-nav-heading">Owner tools</span>
     <button type="button" className="owner-nav-link owner-nav-primary" onClick={() => setOwnerConsoleOpen(true)}><Crown size={16} /><span>Owner Console</span></button>
     <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable} onClick={() => setRevenueOpen(true)} title={ownerToolsAvailable ? "Open payments and revenue" : "Owner email access is required"}><BadgeDollarSign size={16} /><span>Payments & revenue</span></button>
     <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable} onClick={() => setSupportOpen(true)} title={ownerToolsAvailable ? "Open feedback, requests and support tickets" : "Owner email access is required"}><ClipboardList size={16} /><span>Feedback & support</span></button>
-    <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable} onClick={() => setWebsiteOpen(true)} title={ownerToolsAvailable ? "Open website controls" : "Owner email access is required"}><Globe2 size={16} /><span>Web control</span></button>
+    <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable || !canManageWebsite} onClick={() => setWebsiteOpen(true)} title={canManageWebsite ? "Open website controls" : "Admins cannot manage websites"}><Globe2 size={16} /><span>Web control</span></button>
     <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable} onClick={() => setAccessOpen(true)} title={ownerToolsAvailable ? "Open accounts and Special Access codes" : "Owner email access is required"}><KeyRound size={16} /><span>Accounts & access</span></button>
     <button type="button" className="owner-nav-link" disabled={!ownerToolsAvailable} onClick={() => setNewsletterOpen(true)} title={ownerToolsAvailable ? "Open newsletters" : "Owner email access is required"}><Mail size={16} /><span>Newsletters</span></button>
   </div> : null;
@@ -139,12 +141,12 @@ export default function CloudWorkspace() {
     {recovery && <RecoveryDialog email={user.email} code={recovery} onSaved={() => setRecovery("")} />}
     {sharing && library && <SharingDialog user={user} libraries={libraries} selected={library} onClose={() => setSharing(false)} onSelect={id => { setLibraryId(id); setSharing(false); }} onJoined={async id => { await refreshLibraries(id); setSharing(false); }} />}
     {drivesOpen && library?.role === "owner" && <CloudDrives library={library} onClose={() => setDrivesOpen(false)} />}
-    {ownerConsoleOpen && <OwnerConsoleDialog user={user} ownerSurface={ownerSurface} onClose={() => setOwnerConsoleOpen(false)} onOpenRevenue={() => { setOwnerConsoleOpen(false); setRevenueOpen(true); }} onOpenAccess={() => { setOwnerConsoleOpen(false); setAccessOpen(true); }} onOpenNewsletter={() => { setOwnerConsoleOpen(false); setNewsletterOpen(true); }} onOpenSupport={() => { setOwnerConsoleOpen(false); setSupportOpen(true); }} onOpenWebsite={() => { setOwnerConsoleOpen(false); setWebsiteOpen(true); }} />}
+    {ownerConsoleOpen && <OwnerConsoleDialog user={user} ownerSurface={ownerSurface} onClose={() => setOwnerConsoleOpen(false)} onOpenRevenue={() => { setOwnerConsoleOpen(false); setRevenueOpen(true); }} onOpenAccess={() => { setOwnerConsoleOpen(false); setAccessOpen(true); }} onOpenNewsletter={() => { setOwnerConsoleOpen(false); setNewsletterOpen(true); }} onOpenSupport={() => { setOwnerConsoleOpen(false); setSupportOpen(true); }} onOpenWebsite={() => { if (!canManageWebsite) return; setOwnerConsoleOpen(false); setWebsiteOpen(true); }} />}
     {revenueOpen && ownerToolsAvailable && <OwnerRevenueDialog onClose={() => setRevenueOpen(false)} />}
-    {accessOpen && ownerToolsAvailable && <OwnerAccessDialog onClose={() => setAccessOpen(false)} />}
+    {accessOpen && ownerToolsAvailable && <OwnerAccessDialog canManageOwnerRoles={canManageWebsite} onClose={() => setAccessOpen(false)} />}
     {newsletterOpen && ownerToolsAvailable && <OwnerNewsletterDialog onClose={() => setNewsletterOpen(false)} />}
     {supportOpen && ownerToolsAvailable && <OwnerSupportDialog onClose={() => setSupportOpen(false)} />}
-    {websiteOpen && ownerToolsAvailable && <OwnerWebsiteControlDialog onClose={() => setWebsiteOpen(false)} />}
+    {websiteOpen && ownerToolsAvailable && canManageWebsite && <OwnerWebsiteControlDialog onClose={() => setWebsiteOpen(false)} />}
     {updatesOpen && <UpdateCenter currentState={view?.state ?? null} onClose={() => setUpdatesOpen(false)} />}
     {exportMessage && !recovery && <div className="cloud-export-notice" role="status"><span>{exportMessage}</span><button aria-label="Dismiss export message" onClick={() => setExportMessage("")}><X size={16} /></button></div>}
     {!!view?.conflicts.length && !recovery && <div className="cloud-scrim"><section className="cloud-dialog wide" role="dialog" aria-modal="true" aria-labelledby="conflict-title"><h2 id="conflict-title">Changes need your choice</h2><p>Two devices changed the same information. Choose which version to keep for each item.</p>{view.conflicts.map(conflict => <fieldset className="sync-conflict" key={conflict.path}><legend>{conflict.path}</legend>{(["local", "remote"] as const).map(side => <label key={side}><input type="radio" name={conflict.path} checked={choices[conflict.path] === side} onChange={() => setChoices(previous => ({ ...previous, [conflict.path]: side }))} /><strong>{side === "local" ? "This device" : "Cloud version"}</strong><pre>{formatValue(conflict[side])}</pre></label>)}</fieldset>)}<button className="button" disabled={view.conflicts.some(c => !choices[c.path])} onClick={() => void sync.current?.resolve(choices).catch(e => setError(e.message))}>Save my choices</button></section></div>}
@@ -221,13 +223,15 @@ function formatMoney(currencyCode: string, cents: number) {
 }
 function OwnerConsoleDialog({ user, ownerSurface, onClose, onOpenRevenue, onOpenAccess, onOpenNewsletter, onOpenSupport, onOpenWebsite }: { user: CloudUser; ownerSurface: boolean; onClose: () => void; onOpenRevenue: () => void; onOpenAccess: () => void; onOpenNewsletter: () => void; onOpenSupport: () => void; onOpenWebsite: () => void }) {
   const ownerReady = !!user.ownerDashboard || ownerSurface;
+  const ownerRole = user.ownerRole || (ownerSurface ? "owner" : undefined);
+  const canManageWebsite = ownerRole === "owner" || ownerRole === "co-owner";
   const tools = [
-    { title: "Payments in and out", detail: "See Stripe payment events, paid beta income, subscription entries, manual payments, refunds and adjustments.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue },
-    { title: "Revenue dashboard", detail: "Review gross, fees, net earnings, currency totals, account counts and recent payment history.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue },
-    { title: "Feedback and support tickets", detail: "Open, prioritise, reply to, resolve and close app feedback, support forms, quote requests, discount requests and customer enquiries.", icon: <ClipboardList size={18} />, action: onOpenSupport },
-    { title: "Website control", detail: "Review public, owner and Special Access websites, draft website update briefs, and keep downloads/pages aligned.", icon: <Globe2 size={18} />, action: onOpenWebsite },
-    { title: "Accounts and Special Access", detail: "See signups, subscribers, beta interest, redeemed codes, and manually create or revoke Special Access codes.", icon: <KeyRound size={18} />, action: onOpenAccess },
-    { title: "Newsletters", detail: "Release newsletters to subscribers, attach files, and keep a record of released messages.", icon: <Mail size={18} />, action: onOpenNewsletter }
+    { title: "Payments in and out", detail: "See Stripe payment events, paid beta income, subscription entries, manual payments, refunds and adjustments.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue, allowed: true },
+    { title: "Revenue dashboard", detail: "Review gross, fees, net earnings, currency totals, account counts and recent payment history.", icon: <BadgeDollarSign size={18} />, action: onOpenRevenue, allowed: true },
+    { title: "Feedback and support tickets", detail: "Open, prioritise, reply to, resolve and close app feedback, support forms, quote requests, discount requests and customer enquiries.", icon: <ClipboardList size={18} />, action: onOpenSupport, allowed: true },
+    { title: "Website control", detail: canManageWebsite ? "Review public, owner and Special Access websites, draft website update briefs, and keep downloads/pages aligned." : "Owner and co-owner only. Admin accounts cannot manage websites.", icon: <Globe2 size={18} />, action: onOpenWebsite, allowed: canManageWebsite },
+    { title: "Accounts and Special Access", detail: "See signups, subscribers, beta interest, redeemed codes, and manage Special Access codes. Owner/co-owner accounts can also manage owner roles.", icon: <KeyRound size={18} />, action: onOpenAccess, allowed: true },
+    { title: "Newsletters", detail: "Release newsletters to subscribers, attach files, and keep a record of released messages.", icon: <Mail size={18} />, action: onOpenNewsletter, allowed: true }
   ];
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-console" role="dialog" aria-modal="true" aria-labelledby="owner-console-title">
     <button className="cloud-close" aria-label="Close owner console" onClick={onClose}><X size={20} /></button>
@@ -239,7 +243,7 @@ function OwnerConsoleDialog({ user, ownerSurface, onClose, onOpenRevenue, onOpen
       <span> You are on {ownerSurface ? "the owner site" : "a non-owner surface"}, but the cloud account did not return owner-dashboard access. Sign in with the owner email configured in <code>KINFORGE_OWNER_EMAILS</code>, <code>KINFORGE_ADMIN_EMAILS</code>, or <code>OWNER_EMAILS</code> so the private tools can load.</span>
     </div>}
     <div className="owner-console-grid">
-      {tools.map(tool => <button key={tool.title} className="owner-console-card" type="button" disabled={!ownerReady} onClick={tool.action}>
+      {tools.map(tool => <button key={tool.title} className="owner-console-card" type="button" disabled={!ownerReady || !tool.allowed} onClick={tool.action}>
         <span className="owner-console-icon">{tool.icon}</span>
         <strong>{tool.title}</strong>
         <small>{tool.detail}</small>
@@ -312,7 +316,7 @@ function suggestedAccessCode(label: string, email: string) {
   const random = Math.random().toString(36).slice(2, 8);
   return `${base || "special-access"}-${random}`;
 }
-function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
+function OwnerAccessDialog({ canManageOwnerRoles, onClose }: { canManageOwnerRoles: boolean; onClose: () => void }) {
   const [summary, setSummary] = useState<OwnerAccessSummary | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -354,7 +358,7 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
       await cloudRequest("/api/owner/emails", "POST", ownerEmailForm);
       setOwnerEmailForm({ email: "", role: "owner" });
       await refresh();
-      setMessage("Owner/admin email added. That account can open owner tools after signing in again.");
+      setMessage("Owner, co-owner, or admin email added. That account can open its allowed owner tools after signing in again.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not add that owner email.");
     } finally { setBusy(false); }
@@ -364,7 +368,7 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     try {
       await cloudRequest("/api/owner/emails/revoke", "POST", { email });
       await refresh();
-      setMessage("Owner/admin email revoked from the app-managed list.");
+      setMessage("Owner, co-owner, or admin email revoked from the app-managed list.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not revoke that owner email.");
     } finally { setBusy(false); }
@@ -395,7 +399,7 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
   }
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-access" role="dialog" aria-modal="true" aria-labelledby="owner-access-title">
     <button className="cloud-close" aria-label="Close special access" onClick={onClose}><X size={20} /></button>
-    <h2 id="owner-access-title">Signups & special access</h2>
+    <h2 id="owner-access-title">Signups, access & owner roles</h2>
     <p className="quiet">Private owner view. This syncs with the same cloud account database used by the public beta page and special-access redemption flow, so the Special Access version can be managed from inside your owner app.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The special-access table is not active on this deployment yet. Publish the latest build or run the database migration.</p>}
     <div className="revenue-metrics">
@@ -411,12 +415,20 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
     </section>
     <section className="owner-revenue-entry" aria-labelledby="owner-emails-title">
       <h3 id="owner-emails-title"><Crown size={17} />Owner and admin emails</h3>
-      <p className="quiet">The deployment owner email stays in <code>KINFORGE_OWNER_EMAILS</code>. From here, the owner can add more owner/admin emails inside the app; those managed emails are checked together with <code>KINFORGE_OWNER_EMAILS</code>, <code>KINFORGE_ADMIN_EMAILS</code>, and <code>OWNER_EMAILS</code>.</p>
-      <div className="revenue-form-grid">
-        <label className="field"><span>Email to add</span><input className="control" type="email" value={ownerEmailForm.email} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, email: event.target.value })} placeholder="friend@example.com" /></label>
-        <label className="field"><span>Access role</span><select className="control" value={ownerEmailForm.role} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, role: event.target.value })}><option value="owner">Owner</option><option value="admin">Admin</option></select></label>
-      </div>
-      <div className="button-row"><button className="button" disabled={busy || !ownerEmailForm.email.trim()} onClick={() => void addOwnerEmail()}><PlusCircle size={16} />Add owner/admin email</button></div>
+      <p className="quiet">Owners and co-owners can add owner, co-owner, and admin emails inside the app. Owner and co-owner accounts have full owner-control privileges. Admin accounts can use the owner control centre except website management and owner-role management.</p>
+      {!canManageOwnerRoles && <p className="auth-message bad" role="note">Admin accounts can view account and Special Access activity, but only owners and co-owners can add, change, or revoke owner-role accounts.</p>}
+      {canManageOwnerRoles && <>
+        <div className="revenue-form-grid">
+          <label className="field"><span>Email to add</span><input className="control" type="email" value={ownerEmailForm.email} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, email: event.target.value })} placeholder="friend@example.com" /></label>
+          <label className="field"><span>Access role</span><select className="control" value={ownerEmailForm.role} onChange={event => setOwnerEmailForm({ ...ownerEmailForm, role: event.target.value })}><option value="owner">Owner</option><option value="co-owner">Co-owner</option><option value="admin">Admin</option></select></label>
+        </div>
+        <div className="owner-role-guide">
+          <span><strong>Owner</strong> full access, including website and role management.</span>
+          <span><strong>Co-owner</strong> same privileges as owner.</span>
+          <span><strong>Admin</strong> all owner-centre tools except website and role management.</span>
+        </div>
+        <div className="button-row"><button className="button" disabled={busy || !ownerEmailForm.email.trim()} onClick={() => void addOwnerEmail()}><PlusCircle size={16} />Add owner/co-owner/admin email</button></div>
+      </>}
       <div className="owner-access-columns">
         <div>
           <h3><ShieldCheck size={17} />Deployment owner emails</h3>
@@ -424,7 +436,7 @@ function OwnerAccessDialog({ onClose }: { onClose: () => void }) {
         </div>
         <div>
           <h3><Crown size={17} />App-managed owner emails</h3>
-          <div className="revenue-list owner-access-list">{summary?.ownerEmails?.managedEmails.length ? summary.ownerEmails.managedEmails.map(item => <div className="cloud-member" key={item.email}><span><strong>{item.email}{item.revokedAt ? " · revoked" : ""}</strong><small>{item.role} · {item.createdAt ? `added ${new Date(item.createdAt).toLocaleString()}` : "managed in app"}</small></span>{!item.revokedAt && <button className="button ghost" disabled={busy} onClick={() => void revokeOwnerEmail(item.email)}>Revoke</button>}</div>) : <p className="quiet">No app-managed owner emails yet.</p>}</div>
+          <div className="revenue-list owner-access-list">{summary?.ownerEmails?.managedEmails.length ? summary.ownerEmails.managedEmails.map(item => <div className="cloud-member" key={item.email}><span><strong>{item.email}{item.revokedAt ? " · revoked" : ""}</strong><small>{item.role} · {item.createdAt ? `added ${new Date(item.createdAt).toLocaleString()}` : "managed in app"}</small></span>{canManageOwnerRoles && !item.revokedAt && <button className="button ghost" disabled={busy} onClick={() => void revokeOwnerEmail(item.email)}>Revoke</button>}</div>) : <p className="quiet">No app-managed owner emails yet.</p>}</div>
         </div>
       </div>
     </section>
