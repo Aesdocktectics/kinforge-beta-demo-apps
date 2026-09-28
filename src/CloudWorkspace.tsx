@@ -571,7 +571,7 @@ function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
 
 const websiteEditions = [
   { id: "public", label: "Public site", url: "https://kinforge-genealogy-studio-public.marianneleong3.chatgpt.site/website/", note: "Customer-facing landing page, downloads, pricing, About Us, support, releases and free-account entry." },
-  { id: "special", label: "Special Access site", url: "https://kinforge-genealogy-special-access-edition.marianneleong3.chatgpt.site/", note: "Code-protected edition with its own downloads and approved Special Access account flow." },
+  { id: "special", label: "Special Access site", url: "https://kinforge-genealogy-special-access-edition.marianneleong3.chatgpt.site/", note: "Code-protected edition with its own UI, downloads, approval path, and Special Access code gate." },
   { id: "owner", label: "Owner site", url: "https://kinforge-genealogy-studio.marianneleong3.chatgpt.site/", note: "Private owner version for payments, accounts, newsletters, support tickets and app release control." }
 ];
 const websitePages = ["Landing page", "Downloads", "About Us", "Founding Story", "Mission", "Vision", "Values", "Plans & pricing", "Discount roles", "Support", "Privacy Policy", "Terms & Conditions", "Releases", "Special Access gate"];
