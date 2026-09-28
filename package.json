@@ -26,7 +26,7 @@
   "dependencies": {
     "@dagrejs/dagre": "^3.1.1",
     "@lume/kiwi": "0.4.4",
-    "@noble/hashes": "1.8.0",
+    "@noble/hashes": "2.4.0",
     "@tiptap/extension-image": "^3.31.3",
     "@tiptap/extension-text-align": "^3.31.3",
     "@tiptap/extension-text-style": "^3.31.3",
@@ -64,7 +64,7 @@
     "vitest": "^2.1.9"
   },
   "overrides": {
-    "@noble/hashes": "1.8.0"
+    "@noble/hashes": "2.4.0"
   },
   "build": {
     "appId": "studio.kinforge.genealogy.supreme",
