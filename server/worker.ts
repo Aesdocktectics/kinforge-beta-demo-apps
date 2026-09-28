@@ -857,6 +857,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext) {
     const url = new URL(request.url);
+    if (url.pathname === "/" && request.method === "GET") { url.pathname = "/website/"; return env.ASSETS.fetch(new Request(url, request)); }
     const release = await releaseRoutes(request, env); if (release) return release;
     const website = publicWebsiteRoutes(request); if (website) return website;
     if (url.pathname.startsWith("/api/")) {
