@@ -628,7 +628,7 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
   if (method !== "GET" && method !== "HEAD") {
     if (request.headers.get("X-KinForge-Client") !== "1" || (request.headers.get("origin") && request.headers.get("origin") !== url.origin) || request.headers.get("sec-fetch-site") === "cross-site") throw new Problem(403, "This request must come from KinForge.");
   }
-  if (path === "/api/health") return json({ ok: true, version: "1.5.7" });
+  if (path === "/api/health") return json({ ok: true, version: "1.5.8" });
   if (path === "/api/support" && method === "POST") {
     const data = await body(request, 32768);
     await rateLimit(env, request, "support", 8, 60 * 60000, String(data.email || ""));
