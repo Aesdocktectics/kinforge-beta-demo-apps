@@ -8,6 +8,12 @@ import "./workspace.css";
 import "./glyphs.css";
 import "./cloud.css";
 
+const publicHost = window.location.hostname === "kinforge-genealogy-studio-public.marianneleong3.chatgpt.site";
+const appRootPath = window.location.pathname === "/" || window.location.pathname === "/index.html";
+if (publicHost && appRootPath && !window.location.hash) {
+  window.location.replace("/website/");
+}
+
 if (import.meta.env.PROD && "serviceWorker" in navigator && window.location.protocol !== "file:") {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("./sw.js").catch(() => undefined);
