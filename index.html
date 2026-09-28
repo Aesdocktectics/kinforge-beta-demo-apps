@@ -10,6 +10,9 @@
     <link rel="icon" href="/icon.svg" />
   </head>
   <body>
+    <script>
+      if (window.location.pathname === "/") window.location.replace("/website/");
+    </script>
     <div id="root"><main aria-label="KinForge startup" style="font:15px system-ui,sans-serif;color:#263d3b;background:#f8faf9;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px"><img src="./icon.svg" width="56" height="56" alt="" /><h1 style="font-size:24px;margin:0">KinForge</h1><p role="status">Opening your library...</p><a href="./index.html">Reopen app</a></main></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
