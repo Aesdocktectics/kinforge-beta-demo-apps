@@ -12,6 +12,7 @@ type Env = DriveEnv & ReleaseEnv & {
   NEWSLETTER_EMAIL_ENDPOINT?: string; NEWSLETTER_EMAIL_TOKEN?: string; NEWSLETTER_EMAIL_FROM?: string;
   SERENE_RELAY_SUPPORT_ENDPOINT?: string; SERENE_RELAY_SUPPORT_TOKEN?: string; SERENE_RELAY_SUPPORT_TO?: string; SERENE_RELAY_SUPPORT_FROM?: string;
   KINFORGE_OWNER_EMAILS?: string; KINFORGE_ADMIN_EMAILS?: string; OWNER_EMAILS?: string; STRIPE_WEBHOOK_SECRET?: string;
+  STRIPE_SECRET_KEY?: string; STRIPE_PRICE_IDS?: string; STRIPE_TAX_ENABLED?: string; STRIPE_BILLING_PORTAL_RETURN_URL?: string;
 };
 type Account = { id: string; email: string; name: string; password: string; recovery_hash: string };
 type Library = { id: string; owner_id: string; name: string; revision: number; object_key: string | null; updated_at: number; role: string };
@@ -19,7 +20,13 @@ type AuthCodePurpose = "reset" | "login";
 const cookieName = "kinforge_session";
 const day = 86400000;
 const json = (value: unknown, status = 200, headers: HeadersInit = {}) => Response.json(value, {
-  status, headers: { "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff", ...headers }
+  status, headers: {
+    "Cache-Control": "private, no-store",
+    "X-Content-Type-Options": "nosniff",
+    "Cross-Origin-Resource-Policy": "same-origin",
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=(), payment=(self)",
+    ...headers
+  }
 });
 class Problem extends Error { constructor(public status: number, message: string) { super(message); } }
 const secret = () => bytesToHex(crypto.getRandomValues(new Uint8Array(32)));
@@ -152,6 +159,137 @@ function currency(value: unknown) {
   const next = String(value || "SGD").trim().toUpperCase();
   if (!/^[A-Z]{3}$/.test(next)) throw new Problem(400, "Use a three-letter currency code.");
   return next;
+}
+function siteUrl(request: Request, path = "/") {
+  const url = new URL(request.url);
+  url.pathname = path;
+  url.search = "";
+  url.hash = "";
+  return url.toString();
+}
+function stripeKey(env: Env) {
+  const key = env.STRIPE_SECRET_KEY || "";
+  if (!key) throw new Problem(503, "Stripe is not connected yet. Add the Stripe restricted secret key to this deployment.");
+  if (!/^(sk|rk)_(test|live)_/.test(key)) throw new Problem(503, "Stripe key format is not valid.");
+  return key;
+}
+function stripePrices(env: Env): Record<string, string> {
+  try { return env.STRIPE_PRICE_IDS ? JSON.parse(env.STRIPE_PRICE_IDS) : {}; }
+  catch { throw new Problem(503, "Stripe price mapping is not valid JSON."); }
+}
+function stripePriceId(env: Env, plan: unknown, interval: unknown) {
+  const key = `${String(plan || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")}_${String(interval || "month").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+  const id = stripePrices(env)[key];
+  if (!id || !/^price_/.test(id)) throw new Problem(400, `Stripe price is not configured for ${key}.`);
+  return { key, id };
+}
+function stripeForm(data: Record<string, unknown>) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(data)) if (value !== undefined && value !== null && value !== "") params.set(key, String(value));
+  return params;
+}
+async function stripeRequest(env: Env, path: string, data: Record<string, unknown>) {
+  const response = await fetch(`https://api.stripe.com/v1/${path}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${stripeKey(env)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+      "Stripe-Version": "2026-08-26.dahlia"
+    },
+    body: stripeForm(data)
+  });
+  const value = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Problem(502, `Stripe ${path} failed: ${value?.error?.message || "Stripe request failed."}`);
+  return value as Record<string, any>;
+}
+async function createStripeCheckout(env: Env, request: Request, user: Account) {
+  const data = await body(request, 32768);
+  const { key, id } = stripePriceId(env, data.plan, data.interval || "month");
+  const success = String(data.successUrl || siteUrl(request, "/#/billing/success")).slice(0, 500);
+  const cancel = String(data.cancelUrl || siteUrl(request, "/#/billing/cancelled")).slice(0, 500);
+  const session = await stripeRequest(env, "checkout/sessions", {
+    mode: "subscription",
+    "line_items[0][price]": id,
+    "line_items[0][quantity]": 1,
+    success_url: success,
+    cancel_url: cancel,
+    customer_email: user.email,
+    client_reference_id: user.id,
+    allow_promotion_codes: "true",
+    "automatic_tax[enabled]": env.STRIPE_TAX_ENABLED === "true" ? "true" : "false",
+    "metadata[product]": "KinForge Genealogy Studio",
+    "metadata[tier]": key,
+    "metadata[account_id]": user.id,
+    "metadata[discount_code]": String(data.discountCode || "").trim().slice(0, 80),
+    "metadata[request_type]": String(data.requestType || "subscription").trim().slice(0, 80)
+  });
+  return json({ provider: "stripe", id: session.id, url: session.url });
+}
+async function createStripeBillingPortal(env: Env, request: Request, user: Account) {
+  const data = await body(request, 8192);
+  const customer = String(data.customerId || "").trim();
+  if (!/^cus_/.test(customer)) throw new Problem(400, "A Stripe customer id is required for the billing portal.");
+  const portal = await stripeRequest(env, "billing_portal/sessions", {
+    customer,
+    return_url: String(data.returnUrl || env.STRIPE_BILLING_PORTAL_RETURN_URL || siteUrl(request, "/#/owner/revenue")).slice(0, 500)
+  });
+  return json({ provider: "stripe", id: portal.id, url: portal.url });
+}
+async function createStripeQuoteOrDiscountRequest(env: Env, request: Request, user: Account | null) {
+  const data = await body(request, 32768);
+  const email = data.email ? emailAddress(data.email) : user?.email || "";
+  const requestType = String(data.type || "Stripe quote request").trim().slice(0, 80);
+  const subject = String(data.subject || requestType).trim().slice(0, 160);
+  const plan = String(data.plan || "").trim().slice(0, 80);
+  const interval = String(data.interval || "").trim().slice(0, 40);
+  const discountCode = String(data.discountCode || "").trim().slice(0, 80);
+  const suggestedCost = String(data.suggestedCost || "").trim().slice(0, 80);
+  let stripeCustomerId = "";
+  if (env.STRIPE_SECRET_KEY && email) {
+    const customer = await stripeRequest(env, "customers", {
+      email,
+      name: String(data.name || user?.name || "").trim().slice(0, 120),
+      "metadata[source]": "kinforge-quote-request",
+      "metadata[type]": requestType,
+      "metadata[plan]": plan,
+      "metadata[discount_code]": discountCode,
+      "metadata[suggested_cost]": suggestedCost
+    });
+    stripeCustomerId = String(customer.id || "");
+  }
+  const message = [
+    String(data.message || "").trim(),
+    "",
+    "Stripe request details:",
+    `Plan: ${plan || "not provided"}`,
+    `Interval: ${interval || "not provided"}`,
+    `Discount code: ${discountCode || "not provided"}`,
+    `Suggested affordable cost: ${suggestedCost || "not provided"}`,
+    `Stripe customer: ${stripeCustomerId || "not created"}`
+  ].join("\n").trim();
+  const ticket = {
+    id: crypto.randomUUID(),
+    createdAt: new Date().toISOString(),
+    type: requestType,
+    subject,
+    name: String(data.name || user?.name || "").trim().slice(0, 120),
+    email,
+    message: message || "Stripe quote or discount request",
+    device: "Stripe-connected public request",
+    treeTitle: "",
+    proof: String(data.proof || "").trim().slice(0, 3000),
+    permissionToReply: data.permissionToReply !== false,
+    diagnostics: JSON.stringify({ stripeCustomerId, plan, interval, discountCode, suggestedCost, requestType })
+  };
+  const delivered = await deliverSupportRequest(env, ticket);
+  await storeSupportTicket(env, ticket, delivered ? "sent-to-kinforge-support" : stripeCustomerId ? "stripe-customer-created" : "stored-for-owner-dashboard");
+  return json({
+    ok: true,
+    id: ticket.id,
+    stripeCustomerId,
+    delivery: delivered ? "sent-to-kinforge-support" : "stored-for-owner-dashboard",
+    message: "Your request was saved for KinForge Support."
+  }, stripeCustomerId ? 201 : 202);
 }
 function ownerOnly(env: Env, user: Account) {
   if (!isOwnerAccount(env, user)) throw new Problem(403, "This owner revenue area is private.");
@@ -464,14 +602,18 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
     };
     if (!ticket.message) throw new Problem(400, "Write the support message before sending.");
     const delivered = await deliverSupportRequest(env, ticket);
-    await storeSupportTicket(env, ticket, delivered ? "sent-to-serene-relay" : "serene-relay-not-configured");
+    await storeSupportTicket(env, ticket, delivered ? "sent-to-kinforge-support" : "stored-for-owner-dashboard");
     return json({
       ok: true,
       id: ticket.id,
-      delivery: delivered ? "sent-to-serene-relay" : "serene-relay-not-configured",
-      message: delivered ? "Your support request was sent to Serene Relay." : "Serene Relay delivery is not configured yet. Download or save this support request so it is not lost.",
+      delivery: delivered ? "sent-to-kinforge-support" : "stored-for-owner-dashboard",
+      message: delivered ? "Your support request was sent to KinForge Support." : "Your support request was saved for KinForge Support. Download or save a copy for your records.",
       ticket
     }, delivered ? 201 : 202);
+  }
+  if (path === "/api/stripe/quote-request" && method === "POST") {
+    await rateLimit(env, request, "stripe-quote-request", 12, 60 * 60000, request.headers.get("CF-Connecting-IP") || "");
+    return createStripeQuoteOrDiscountRequest(env, request, null);
   }
   if (path === "/api/auth/register" && method === "POST") {
     const data = await body(request); const email = emailAddress(data.email); const password = validPassword(data.password);
@@ -536,6 +678,18 @@ async function api(request: Request, env: Env, ctx: ExecutionContext) {
   if (path === "/api/auth/logout" && method === "POST") {
     await env.DB.prepare("DELETE FROM sessions WHERE hash=?").bind(await digest(requestToken(request))).run();
     return json({ ok: true }, 200, { "Set-Cookie": cookie("", request, 0) });
+  }
+  if (path === "/api/stripe/checkout" && method === "POST") {
+    await rateLimit(env, request, "stripe-checkout", 20, 15 * 60000, user.id);
+    return createStripeCheckout(env, request, user);
+  }
+  if (path === "/api/stripe/billing-portal" && method === "POST") {
+    await rateLimit(env, request, "stripe-billing-portal", 20, 15 * 60000, user.id);
+    return createStripeBillingPortal(env, request, user);
+  }
+  if (path === "/api/stripe/account-quote-request" && method === "POST") {
+    await rateLimit(env, request, "stripe-account-quote-request", 20, 60 * 60000, user.id);
+    return createStripeQuoteOrDiscountRequest(env, request, user);
   }
   if (path === "/api/owner/revenue" && method === "GET") {
     ownerOnly(env, user);

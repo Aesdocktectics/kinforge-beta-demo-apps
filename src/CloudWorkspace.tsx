@@ -3,6 +3,7 @@ import { Cloud, CloudOff, RefreshCw, Share2, X, Copy, Download, LogIn, BadgeDoll
 import { AppState, createSeedState } from "./domain";
 import { hydrateLibrary } from "./libraryState";
 import { CloudError, CloudLibrary, CloudUser, clearAssetCache, cloudRequest } from "./cloudApi";
+import { cleanupCloudCache } from "./cloudCache";
 import { CloudSync, SyncView } from "./cloudSync";
 import type { ConflictChoices } from "./cloudMerge";
 import { loadAuthState, login as legacyLogin, activeUser as legacyUser } from "./auth";
@@ -37,6 +38,18 @@ export default function CloudWorkspace() {
   const sync = useRef<CloudSync | null>(null);
   const [retry, setRetry] = useState(0);
   const library = libraries.find(item => item.id === libraryId);
+  useEffect(() => {
+    const key = "kinforge-cache-housekeeping-v1";
+    const run = () => {
+      const last = Number(localStorage.getItem(key) || "0");
+      if (Date.now() - last < 6 * 60 * 60000) return;
+      localStorage.setItem(key, String(Date.now()));
+      void cleanupCloudCache(user?.id || "", libraryId).catch(() => {});
+    };
+    run();
+    const timer = window.setInterval(run, 6 * 60 * 60000);
+    return () => window.clearInterval(timer);
+  }, [user?.id, libraryId]);
   useEffect(() => {
     setDrivesOpen(false); setExportMessage("");
     if (!user || !library || library.role !== "owner" || demo || !view || view.locked) return;
@@ -215,17 +228,17 @@ function OwnerRevenueDialog({ onClose }: { onClose: () => void }) {
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-revenue" role="dialog" aria-modal="true" aria-labelledby="owner-revenue-title">
     <button className="cloud-close" aria-label="Close owner revenue" onClick={onClose}><X size={20} /></button>
     <h2 id="owner-revenue-title">Owner revenue</h2>
-    <p className="quiet">Private owner view for payments, subscription income and beta-program revenue. Guests and ordinary customer accounts cannot open this area.</p>
+    <p className="quiet">Private owner view for Stripe payments, subscription income, paid beta revenue, coupon/discount outcomes, and manual owner entries. Guests and ordinary customer accounts cannot open this area.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The payment ledger table is not active on this deployment yet. Publish the latest cloud build or run the new database migration before live Stripe events can appear.</p>}
     <div className="revenue-metrics">
       {summary?.totals.length ? summary.totals.map(total => <article key={total.currency}>
         <span>{total.currency}</span><strong>{formatMoney(total.currency, total.net)}</strong><small>{total.payments} payments · gross {formatMoney(total.currency, total.gross)} · fees {formatMoney(total.currency, total.fees)}</small>
-      </article>) : <article><span>Total earnings</span><strong>{summary ? "No payments yet" : "Loading..."}</strong><small>Stripe payments and owner entries will appear here.</small></article>}
+      </article>) : <article><span>Total earnings</span><strong>{summary ? "No payments yet" : "Loading..."}</strong><small>Signed Stripe webhook payments and owner entries will appear here.</small></article>}
       <article><span>Accounts</span><strong>{summary?.accountCount ?? "..."}</strong><small>Signed-in KinForge accounts</small></article>
       <article><span>Beta interest</span><strong>{summary?.betaInterestCount ?? "..."}</strong><small>People who joined the beta list</small></article>
     </div>
     <section className="owner-revenue-entry" aria-labelledby="owner-revenue-entry-title">
-      <h3 id="owner-revenue-entry-title">Record a payment</h3>
+      <h3 id="owner-revenue-entry-title">Record a manual payment or adjustment</h3>
       <div className="revenue-form-grid">
         <label className="field"><span>Customer email</span><input className="control" type="email" value={form.customerEmail} onChange={event => setForm({ ...form, customerEmail: event.target.value })} /></label>
         <label className="field"><span>Customer name</span><input className="control" value={form.customerName} onChange={event => setForm({ ...form, customerName: event.target.value })} /></label>
@@ -239,7 +252,7 @@ function OwnerRevenueDialog({ onClose }: { onClose: () => void }) {
       </div>
       <div className="button-row"><button className="button" disabled={busy || !form.amount.trim()} onClick={() => void addEvent()}><PlusCircle size={16} />{busy ? "Saving..." : "Save payment"}</button><button className="button secondary" disabled={busy} onClick={() => void refresh().catch(error => setMessage(error instanceof Error ? error.message : "Could not refresh."))}><RefreshCw size={16} />Refresh revenue</button></div>
     </section>
-    <h3>Recent payments</h3>
+    <h3>Recent Stripe payments and owner entries</h3>
     <div className="revenue-list">
       {summary?.recent.length ? summary.recent.map(event => <div className="cloud-member" key={event.id}><span><strong>{formatMoney(event.currency, event.net)} · {event.product}</strong><small>{event.customerEmail || event.customerName || "No customer"} · {event.provider} · {event.status} · {new Date(event.paidAt).toLocaleDateString()}</small></span></div>) : <p className="quiet">No payment events have been recorded yet.</p>}
     </div>
@@ -411,10 +424,10 @@ function OwnerNewsletterDialog({ onClose }: { onClose: () => void }) {
       setForm(previous => ({ ...previous, summary: "", content: "" }));
       setAttachments([]);
       await refresh();
-      const delivered = result.deliveryStatus === "sent" || result.deliveryStatus === "sent-to-serene-relay";
+      const delivered = result.deliveryStatus === "sent" || result.deliveryStatus === "sent-to-kinforge-support" || result.deliveryStatus === "sent-to-serene-relay";
       setMessage(delivered
         ? `Newsletter released to ${result.recipientCount} subscriber${result.recipientCount === 1 ? "" : "s"} with ${result.attachmentCount} attachment${result.attachmentCount === 1 ? "" : "s"}.`
-        : `Newsletter published for ${result.recipientCount} subscriber${result.recipientCount === 1 ? "" : "s"}. Email delivery needs a newsletter or Serene Relay endpoint before it can send automatically.`);
+        : `Newsletter published for ${result.recipientCount} subscriber${result.recipientCount === 1 ? "" : "s"}. Email delivery needs a newsletter endpoint before it can send automatically.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Could not release this newsletter.");
     } finally { setBusy(false); }
@@ -427,7 +440,7 @@ function OwnerNewsletterDialog({ onClose }: { onClose: () => void }) {
     <div className="revenue-metrics">
       <article><span>Subscribers</span><strong>{summary?.subscribers.length ?? "..."}</strong><small>Signed-up accounts included in releases</small></article>
       <article><span>Released newsletters</span><strong>{summary?.releases.length ?? "..."}</strong><small>Stored in the owner newsletter archive</small></article>
-      <article><span>Latest delivery</span><strong>{summary?.releases[0]?.deliveryStatus || "..."}</strong><small>Uses newsletter email endpoint or Serene Relay when configured</small></article>
+      <article><span>Latest delivery</span><strong>{summary?.releases[0]?.deliveryStatus || "..."}</strong><small>Uses the configured KinForge newsletter email endpoint</small></article>
     </div>
     <section className="owner-revenue-entry" aria-labelledby="newsletter-composer-title">
       <h3 id="newsletter-composer-title"><Mail size={17} />Release newsletter</h3>
@@ -490,8 +503,8 @@ function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
       const result = await cloudRequest<{ deliveryStatus: string }>(`/api/owner/support/${selected.id}/replies`, "POST", { message: reply });
       setReply("");
       await refresh();
-      setMessage(result.deliveryStatus === "sent-to-serene-relay"
-        ? "Reply saved and sent through Serene Relay."
+      setMessage(result.deliveryStatus === "sent-to-kinforge-support" || result.deliveryStatus === "sent-to-serene-relay"
+        ? "Reply saved and sent through KinForge Support."
         : result.deliveryStatus === "stored-only"
           ? "Reply saved. Email delivery is unavailable or the customer did not allow replies."
           : "Reply saved, but email delivery reported a problem.");
@@ -502,7 +515,7 @@ function OwnerSupportDialog({ onClose }: { onClose: () => void }) {
   return <div className="cloud-scrim"><section className="cloud-dialog wide owner-support" role="dialog" aria-modal="true" aria-labelledby="owner-support-title">
     <button className="cloud-close" aria-label="Close support tickets" onClick={onClose}><X size={20} /></button>
     <h2 id="owner-support-title">Owner support tickets</h2>
-    <p className="quiet">Private owner helpdesk. Public support-form enquiries are saved here, can be answered from KinForge, and can be opened, prioritised, resolved or closed.</p>
+    <p className="quiet">Private owner helpdesk. Public support, Stripe quote requests, discount requests, subsidised pricing requests, accessibility-discount requests and KinForge Support enquiries are saved here, can be answered from KinForge, and can be opened, prioritised, resolved or closed.</p>
     {summary?.setupRequired && <p className="auth-message bad" role="alert">The support ticket tables are not active on this deployment yet. Publish the latest cloud build or run the new database migration.</p>}
     <div className="revenue-metrics">
       <article><span>Open</span><strong>{counts.open || 0}</strong><small>New tickets needing action</small></article>

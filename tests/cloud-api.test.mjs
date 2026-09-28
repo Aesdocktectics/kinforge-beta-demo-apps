@@ -55,6 +55,29 @@ test("beta interest is account protected and records interest without payment da
   assert.equal((await call("/api/beta/interest", "DELETE", undefined, owner.cookie)).status, 200);
   assert.equal((await call("/api/beta/interest", "GET", undefined, owner.cookie)).body.interest, null);
 });
+test("public quote requests are saved for owner support without exposing payment setup", async () => {
+  const request = await call("/api/stripe/quote-request", "POST", {
+    type: "Business quote request",
+    name: "Quote Customer",
+    email: "quote@example.test",
+    subject: "Need seats for a writing group",
+    plan: "Business Plus",
+    interval: "annual",
+    discountCode: "AUTHOR10",
+    suggestedCost: "SGD 80 per year",
+    proof: "Writing group with five seats",
+    message: "Please send a quote for five seats.",
+    permissionToReply: true
+  });
+  assert.equal(request.status, 202, JSON.stringify(request.body));
+  assert.equal(request.body.message, "Your request was saved for KinForge Support.");
+  const support = await call("/api/owner/support", "GET", undefined, owner.cookie);
+  assert.equal(support.status, 200, JSON.stringify(support.body));
+  const ticket = support.body.tickets.find(item => item.email === "quote@example.test");
+  assert.ok(ticket, "quote request should appear in owner support tickets");
+  assert.equal(ticket.deliveryStatus, "stored-for-owner-dashboard");
+  assert.match(ticket.message, /Business Plus/);
+});
 test("owner can see accounts and release newsletters to subscribers", async () => {
   const signup = await call("/api/beta/interest", "POST", { consent: true }, other.cookie);
   assert.equal(signup.status, 201, JSON.stringify(signup.body));

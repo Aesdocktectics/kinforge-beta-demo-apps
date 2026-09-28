@@ -71,7 +71,9 @@
     const data = Object.fromEntries(new FormData(support));
     data.permissionToReply = Boolean(new FormData(support).get("permissionToReply"));
     try {
-      const saved = await api("/api/support", { method: "POST", body: JSON.stringify(data) });
+      const requestType = String(data.type || "");
+      const endpoint = /quote|discount|subsid/i.test(requestType) ? "/api/stripe/quote-request" : "/api/support";
+      const saved = await api(endpoint, { method: "POST", body: JSON.stringify(data) });
       if (supportResult) supportResult.textContent = saved.message || "Request sent.";
       support.reset();
     } catch (error) {
